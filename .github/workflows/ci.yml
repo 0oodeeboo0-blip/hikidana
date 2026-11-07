@@ -139,6 +139,8 @@ jobs:
             @{ Name = 'top-light'; Args = '--demo --open --theme light --edge top --position 0.7' },
             @{ Name = 'closed-light'; Args = '--demo --theme light' }
           )
+          # マウスを棚から離しておく（カードの上にあると、マウスを乗せたときの見た目になる）
+          [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(600, 700)
           foreach ($v in $variants) {
             $p = Start-Process -FilePath $exe -ArgumentList $v.Args -PassThru
             Start-Sleep -Seconds 8

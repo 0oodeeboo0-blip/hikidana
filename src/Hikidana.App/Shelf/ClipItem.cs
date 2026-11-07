@@ -14,6 +14,7 @@ public sealed class ClipItem : INotifyPropertyChanged
     private const int MaxPreviewLength = 400;
     private ImageSource? thumbnail;
     private string time = string.Empty;
+    private bool selected;
 
     public ClipItem(Clip clip, DateTimeOffset now)
     {
@@ -82,10 +83,42 @@ public sealed class ClipItem : INotifyPropertyChanged
         }
 
         HasText = !string.IsNullOrEmpty(Text);
+        SearchText = string.Join(
+            "\n",
+            new[] { clip.Preview, KindName, AppName, clip.SourceApp, clip.SourceUrl, clip.ColorHex, Detail }
+                .Concat(clip.Files)
+                .Where(t => !string.IsNullOrEmpty(t)));
+        Category = clip.Kind switch
+        {
+            ClipKind.Image or ClipKind.Screenshot => ClipCategory.Images,
+            ClipKind.Link => ClipCategory.Links,
+            ClipKind.Files => ClipCategory.Files,
+            _ => ClipCategory.Text,
+        };
         UpdateTime(now);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>検索で探す文字（見出し・アプリ・URL・ファイルの名前など）。</summary>
+    public string SearchText { get; }
+
+    /// <summary>絞り込みの分け方。</summary>
+    public ClipCategory Category { get; }
+
+    /// <summary>キーボードで選んでいる（検索中の ↑↓）。</summary>
+    public bool IsSelected
+    {
+        get => selected;
+        set
+        {
+            if (selected != value)
+            {
+                selected = value;
+                OnPropertyChanged();
+            }
+        }
+    }
 
     public Clip Clip { get; }
 
@@ -146,6 +179,23 @@ public sealed class ClipItem : INotifyPropertyChanged
     public string PinGlyph => Version.Pinned ? "\uE840" : "\uE718";
 
     public string PinToolTip => Version.Pinned ? "ピン留めを外す" : "ピン留めする（消えないようにする）";
+
+    /// <summary>右クリックの「ピン留め」の文字。</summary>
+    public string PinMenuText => Version.Pinned ? "ピン留めを外す" : "ピン留めする";
+
+    /// <summary>右クリックの、もう 1 つの貼り付け方（無ければ null。ふつうの貼り付けと同じになる種類は出さない）。</summary>
+    public string? AlternatePasteText => Clip.Kind switch
+    {
+        ClipKind.Image or ClipKind.Screenshot => "ファイルとして貼り付け",
+        ClipKind.RichText or ClipKind.Table => "書式なしで貼り付け",
+        ClipKind.Files => "場所を文字で貼り付け",
+        _ => null,
+    };
+
+    public bool HasAlternatePaste => AlternatePasteText is not null;
+
+    /// <summary>「名前を付けて保存」ができる（ファイルは元の場所にあるので出さない）。</summary>
+    public bool CanSave => !IsFiles;
 
     public string PasteToolTip => IsImage
         ? "クリックで貼り付け。Shift を押しながらクリックすると、ファイルとして貼り付けます。"
@@ -283,4 +333,13 @@ public sealed class ClipItem : INotifyPropertyChanged
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+
+/// <summary>絞り込みの分け方。</summary>
+public enum ClipCategory
+{
+    Text,
+    Images,
+    Links,
+    Files,
 }

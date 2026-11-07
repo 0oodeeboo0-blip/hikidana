@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Data;
 using System.Windows.Media;
 using Hikidana.App.Interop;
 using Hikidana.Win32;
@@ -18,14 +21,24 @@ public partial class ShelfWindow : Window
     /// <summary>これだけ動かしたら、クリックではなくドラッグとみなす（DIP）。</summary>
     private const double DragThreshold = 8;
 
+    private static readonly CompareInfo Compare = CultureInfo.GetCultureInfo("ja-JP").CompareInfo;
+    private readonly ICollectionView view;
     private Point? pressedAt;
     private ClipItem? pressedItem;
     private bool suppressClick;
+    private ClipCategory? category;
+    private bool pinnedOnly;
+    private string query = string.Empty;
+    private ClipItem? selected;
+    private bool typing;
 
     public ShelfWindow()
     {
         InitializeComponent();
         CardList.ItemsSource = Items;
+        view = CollectionViewSource.GetDefaultView(Items);
+        view.Filter = Matches;
+        Items.CollectionChanged += (_, _) => UpdateCounts();
     }
 
     /// <summary>カード（新しい順）。</summary>
@@ -52,15 +65,58 @@ public partial class ShelfWindow : Window
 
     public event Action? QuitRequested;
 
+    /// <summary>検索の欄をクリックした（キーボードで打てるよう、棚を前に出してほしい）。</summary>
+    public event Action? TypingRequested;
+
+    /// <summary>右クリックの「名前を付けて保存」。</summary>
+    public event Action<ClipItem>? SaveRequested;
+
     /// <summary>カードのドラッグを始めた（落とし終わるまで戻らない）。</summary>
     public event Action<ClipItem, FrameworkElement>? DragRequested;
 
     /// <summary>ほかのアプリから、何かが落とされた。</summary>
     public event Action<IDataObject>? Dropped;
 
-    public void ShowCount(int count) => CountText.Text = count == 0 ? string.Empty : $"{count} 件";
+    /// <summary>件数と、空・見つからないの表示を、いまのカードに合わせる。</summary>
+    public void UpdateCounts()
+    {
+        var total = Items.Count;
+        var shown = IsFiltering ? view.Cast<object>().Count() : total;
+        CountText.Text = total == 0 ? string.Empty : IsFiltering ? $"{shown} / {total} 件" : $"{total} 件";
+        EmptyState.Visibility = total == 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoMatchState.Visibility = total > 0 && shown == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (selected is not null && (!Items.Contains(selected) || !Matches(selected)))
+        {
+            Select(FirstVisible());
+        }
+    }
 
-    public void ShowEmpty(bool empty) => EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>キーボードで打てるようにする（棚を前に出して、検索の欄に入る）。</summary>
+    public void BeginTyping()
+    {
+        typing = true;
+        WindowHelper.Activate(this);
+        SearchBox.Focus();
+        Keyboard.Focus(SearchBox);
+        if (selected is null)
+        {
+            Select(FirstVisible());
+        }
+    }
+
+    /// <summary>検索と絞り込みをやめて、初めの見え方に戻す（閉じたとき）。</summary>
+    public void ResetView()
+    {
+        typing = false;
+        Select(null);
+        if (query.Length > 0 || category is not null || pinnedOnly)
+        {
+            SearchBox.Text = string.Empty;
+            FilterAll.IsChecked = true;
+        }
+    }
+
+    private bool IsFiltering => query.Length > 0 || category is not null || pinnedOnly;
 
     public void ShowPaused(bool paused)
     {
@@ -136,6 +192,205 @@ public partial class ShelfWindow : Window
         }
 
         PasteRequested?.Invoke(item, ShiftHeld());
+    }
+
+    private void MenuPaste_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } item)
+        {
+            PasteRequested?.Invoke(item, false);
+        }
+    }
+
+    private void MenuAlternatePaste_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } item)
+        {
+            PasteRequested?.Invoke(item, true);
+        }
+    }
+
+    private void MenuCopy_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } item)
+        {
+            CopyRequested?.Invoke(item, false);
+        }
+    }
+
+    private void MenuPin_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } item)
+        {
+            PinRequested?.Invoke(item);
+        }
+    }
+
+    private void MenuSave_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } item)
+        {
+            SaveRequested?.Invoke(item);
+        }
+    }
+
+    private void MenuDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (ItemOf(sender) is { } item)
+        {
+            DeleteRequested?.Invoke(item);
+        }
+    }
+
+    private bool Matches(object value) =>
+        value is ClipItem item
+        && (pinnedOnly ? item.Pinned : category is null || item.Category == category)
+        && (query.Length == 0 || Compare.IndexOf(item.SearchText, query, CompareOptions.IgnoreCase | CompareOptions.IgnoreKanaType | CompareOptions.IgnoreWidth) >= 0);
+
+    private void ApplyFilter()
+    {
+        view.Refresh();
+        UpdateCounts();
+        if (typing)
+        {
+            Select(FirstVisible());
+        }
+
+        ScrollToTop();
+    }
+
+    private ClipItem? FirstVisible() => view.Cast<ClipItem>().FirstOrDefault();
+
+    private void Select(ClipItem? item)
+    {
+        if (ReferenceEquals(item, selected))
+        {
+            return;
+        }
+
+        if (selected is not null)
+        {
+            selected.IsSelected = false;
+        }
+
+        selected = item;
+        if (item is null)
+        {
+            return;
+        }
+
+        item.IsSelected = true;
+        var index = view.Cast<ClipItem>().ToList().IndexOf(item);
+        if (index >= 0 && FindPanel(CardList) is { } panel)
+        {
+            panel.BringIndexIntoViewPublic(index);
+        }
+    }
+
+    private void MoveSelection(int step)
+    {
+        var visible = view.Cast<ClipItem>().ToList();
+        if (visible.Count == 0)
+        {
+            return;
+        }
+
+        var index = selected is null ? -1 : visible.IndexOf(selected);
+        Select(visible[Math.Clamp(index + step, 0, visible.Count - 1)]);
+    }
+
+    private static VirtualizingStackPanel? FindPanel(DependencyObject root)
+    {
+        if (root is VirtualizingStackPanel panel)
+        {
+            return panel;
+        }
+
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            if (FindPanel(VisualTreeHelper.GetChild(root, i)) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private void SearchBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!typing)
+        {
+            TypingRequested?.Invoke();
+        }
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        query = SearchBox.Text.Trim();
+        SearchPlaceholder.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ClearSearchButton.Visibility = SearchBox.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        ApplyFilter();
+    }
+
+    private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Down:
+                MoveSelection(1);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                MoveSelection(-1);
+                e.Handled = true;
+                break;
+            case Key.Enter when (selected ?? FirstVisible()) is { } item:
+                PasteRequested?.Invoke(item, (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                if (SearchBox.Text.Length > 0)
+                {
+                    SearchBox.Text = string.Empty;
+                }
+                else
+                {
+                    CloseRequested?.Invoke();
+                }
+
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void ClearSearch_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Text = string.Empty;
+        if (typing)
+        {
+            SearchBox.Focus();
+        }
+    }
+
+    private void Filter_Checked(object sender, RoutedEventArgs e)
+    {
+        // 読み込みの途中（まだ部品が揃っていない）でも呼ばれる
+        if (!IsLoaded && sender != FilterAll)
+        {
+            return;
+        }
+
+        pinnedOnly = sender == FilterPinned;
+        category = sender == FilterImages ? ClipCategory.Images
+            : sender == FilterText ? ClipCategory.Text
+            : sender == FilterLinks ? ClipCategory.Links
+            : sender == FilterFiles ? ClipCategory.Files
+            : null;
+        if (view is not null)
+        {
+            ApplyFilter();
+        }
     }
 
     private void Card_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

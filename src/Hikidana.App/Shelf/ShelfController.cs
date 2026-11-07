@@ -38,6 +38,8 @@ internal sealed class ShelfController : IDisposable
     private bool isOpen;
     private bool keepOpen;
     private bool dragging;
+    private bool typing;
+    private TargetWindow? lastExternal;
     private int refreshQueued;
     private bool disposed;
 
@@ -51,16 +53,19 @@ internal sealed class ShelfController : IDisposable
         dispatcher = Dispatcher.CurrentDispatcher;
 
         handle.Clicked += Toggle;
+        lastExternal = CurrentTarget();
         handle.Dragged += OnHandleDragged;
         handle.DragFinished += SaveSettings;
         handle.Dropped += OnDropped;
         shelf.DragRequested += OnDragRequested;
+        shelf.SaveRequested += OnSaveRequested;
         shelf.Dropped += OnDropped;
         shelf.PasteRequested += OnPasteRequested;
         shelf.CopyRequested += OnCopyRequested;
         shelf.PinRequested += item => store.SetPinned(item.Clip.Id, !item.Pinned);
         shelf.DeleteRequested += OnDeleteRequested;
-        shelf.CloseRequested += Close;
+        shelf.CloseRequested += () => Close(restoreFocus: true);
+        shelf.TypingRequested += BeginTyping;
         shelf.KeepOpenChanged += keep => keepOpen = keep;
         shelf.PausedChanged += SetPaused;
         shelf.OpenDataRequested += () => OpenFolder(store.Root);
@@ -121,28 +126,51 @@ internal sealed class ShelfController : IDisposable
         isOpen = true;
     }
 
-    public void Close()
+    /// <summary>
+    /// 閉じる。<paramref name="restoreFocus"/> なら、検索で棚にキーボードを渡していたとき、元のアプリに戻す
+    /// （ほかのアプリをクリックして閉じたときや、貼り付けで閉じたときは戻さない）。
+    /// </summary>
+    public void Close(bool restoreFocus = false)
     {
         if (!isOpen)
         {
             return;
         }
 
+        var wasTyping = typing;
+        typing = false;
         shelf.Hide();
+        shelf.ResetView();
         handle.Show();
         isOpen = false;
+        if (wasTyping && restoreFocus && lastExternal is { Exists: true } target)
+        {
+            WindowHelper.BringToFront(target.Handle);
+        }
     }
 
     public void Toggle()
     {
         if (isOpen)
         {
-            Close();
+            Close(restoreFocus: true);
         }
         else
         {
             Open();
         }
+    }
+
+    /// <summary>検索の欄をクリックした: 棚を前に出して、キーボードを受け取る（貼り付け先は、その前のアプリのまま）。</summary>
+    private void BeginTyping()
+    {
+        if (CurrentTarget() is { } target)
+        {
+            lastExternal = target;
+        }
+
+        typing = true;
+        shelf.BeginTyping();
     }
 
     public void Dispose()
@@ -278,8 +306,7 @@ internal sealed class ShelfController : IDisposable
             items.RemoveAt(items.Count - 1);
         }
 
-        shelf.ShowCount(ordered.Count);
-        shelf.ShowEmpty(ordered.Count == 0);
+        shelf.UpdateCounts();
     }
 
     private void UpdateTimes()
@@ -341,16 +368,19 @@ internal sealed class ShelfController : IDisposable
             TaskScheduler.FromCurrentSynchronizationContext());
     }
 
-    /// <summary>いま前面にある、貼り付け先のウインドウ。タスクバーや自分のウインドウなら null。</summary>
-    private static TargetWindow? CurrentTarget()
+    /// <summary>
+    /// 貼り付け先のウインドウ。ふだんは、いま前面にあるもの（棚はクリックしても前面にならない）。
+    /// 検索で棚が前面にいるときは、その前に前面にあったもの。タスクバーなどなら null。
+    /// </summary>
+    private TargetWindow? CurrentTarget()
     {
         var target = TargetWindow.Foreground();
-        if (target is null || target.ProcessId == (uint)Environment.ProcessId || NoTargetClasses.Contains(target.ClassName))
+        if (target is not null && target.ProcessId == (uint)Environment.ProcessId)
         {
-            return null;
+            return lastExternal is { Exists: true } previous ? previous : null;
         }
 
-        return target;
+        return target is null || NoTargetClasses.Contains(target.ClassName) ? null : target;
     }
 
     private async void OnPasteRequested(ClipItem item, bool alternate)
@@ -436,6 +466,12 @@ internal sealed class ShelfController : IDisposable
 
     private void OnForegroundChanged(nint window)
     {
+        // 貼り付け先の候補として覚えておく（検索で棚が前に出たあとも、ここへ貼る）
+        if (TargetWindow.From(window) is { } target && target.ProcessId != (uint)Environment.ProcessId && !NoTargetClasses.Contains(target.ClassName))
+        {
+            lastExternal = target;
+        }
+
         // ほかのアプリやデスクトップをクリックしたら閉じる（同じアプリの中をクリックしただけなら閉じない）。
         // カードをドラッグしている間は、落とす先のアプリが前に出ても閉じない
         if (isOpen && !keepOpen && !dragging)
@@ -507,6 +543,60 @@ internal sealed class ShelfController : IDisposable
         if (plan.Note is { } note)
         {
             ShowToast(note, ToastKind.Caution, TimeSpan.FromSeconds(5));
+        }
+    }
+
+    /// <summary>右クリックの「名前を付けて保存」。画像は PNG、そのほかはテキストのファイルにする。</summary>
+    private void OnSaveRequested(ClipItem item)
+    {
+        var clip = item.Clip;
+        var stamp = clip.CreatedAt.ToString("yyyy-MM-dd HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        var dialog = new SaveFileDialog
+        {
+            Title = "名前を付けて保存",
+            FileName = clip.IsImage ? $"{(clip.Kind == ClipKind.Screenshot ? "スクリーンショット" : "画像")} {stamp}.png" : $"{ClipLabels.KindName(clip.Kind)} {stamp}.txt",
+            Filter = clip.IsImage ? "PNG 画像 (*.png)|*.png" : "テキスト (*.txt)|*.txt|すべてのファイル (*.*)|*.*",
+            DefaultExt = clip.IsImage ? ".png" : ".txt",
+            AddExtension = true,
+            OverwritePrompt = true,
+            InitialDirectory = Environment.GetFolderPath(clip.IsImage ? Environment.SpecialFolder.MyPictures : Environment.SpecialFolder.MyDocuments),
+        };
+        if (dialog.ShowDialog(shelf.IsVisible ? shelf : null) != true)
+        {
+            return;
+        }
+
+        var path = dialog.FileName;
+        try
+        {
+            if (clip.IsImage)
+            {
+                File.Copy(store.ImagePath(clip) ?? throw new FileNotFoundException("画像のファイルが見つかりません。"), path, overwrite: true);
+            }
+            else
+            {
+                File.WriteAllText(path, store.ReadText(clip) ?? clip.Preview, new System.Text.UTF8Encoding(false));
+            }
+
+            Log.Info($"保存: {clip.Kind}");
+            ShowToast("保存しました。", ToastKind.Success, TimeSpan.FromSeconds(6), "フォルダーを開く", () => OpenFolderSelecting(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn("保存できませんでした。", ex);
+            ShowToast($"保存できませんでした。{ex.Message}", ToastKind.Critical, TimeSpan.FromSeconds(7));
+        }
+    }
+
+    private static void OpenFolderSelecting(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception)
+        {
+            Log.Warn("フォルダーを開けませんでした。", ex);
         }
     }
 

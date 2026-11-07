@@ -95,7 +95,7 @@ public sealed class AppTests
     {
         Assert.True(TestNative.GetWindowRect(shelf, out var rect));
         var scale = (rect.Right - rect.Left) / 360.0;
-        var point = (rect.Left + ((rect.Right - rect.Left) / 2), rect.Top + (int)(150 * scale));
+        var point = (rect.Left + ((rect.Right - rect.Left) / 2), rect.Top + (int)(230 * scale));
         Console.WriteLine($"       棚: ({rect.Left}, {rect.Top})-({rect.Right}, {rect.Bottom})、カード {point}");
         return point;
     }

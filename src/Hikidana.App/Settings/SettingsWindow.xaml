@@ -113,16 +113,18 @@
 
           <!-- 画面の図。端の近くをクリックすると、その端に棚を出す（マウスを乗せると、出る場所を薄く見せる） -->
           <StackPanel Grid.Column="0" Width="252" VerticalAlignment="Center">
-            <Grid Height="152">
-              <Canvas x:Name="Diagram" Width="240" Height="135" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                      Background="Transparent" Cursor="Hand" ClipToBounds="True"
-                      ToolTip="クリックした端に、棚を出します"
-                      MouseMove="Diagram_MouseMove" MouseLeave="Diagram_MouseLeave" MouseLeftButtonUp="Diagram_MouseLeftButtonUp">
-                <Border x:Name="ScreenFrame" CornerRadius="5" BorderThickness="1"
-                        Background="{DynamicResource Hkd.ScreenFill}" BorderBrush="{DynamicResource Hkd.ScreenStroke}" />
+            <Grid Height="160">
+              <!-- 画面の枠（ふち）。中の Canvas が画面で、その中に壁紙・タスクバー・棚・取っ手を描く -->
+              <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Padding="4" CornerRadius="8" BorderThickness="1"
+                      Background="{DynamicResource Hkd.ScreenBezel}" BorderBrush="{DynamicResource Hkd.ScreenBezelEdge}">
+                <Canvas x:Name="Diagram" Width="240" Height="135"
+                        Background="Transparent" Cursor="Hand" ClipToBounds="True"
+                        ToolTip="クリックした端に、棚を出します"
+                        MouseMove="Diagram_MouseMove" MouseLeave="Diagram_MouseLeave" MouseLeftButtonUp="Diagram_MouseLeftButtonUp">
+                <Border x:Name="ScreenFrame" CornerRadius="3" Background="{DynamicResource Hkd.ScreenWallpaper}" />
                 <Border x:Name="TaskbarBar" Background="{DynamicResource Hkd.ScreenTaskbar}" />
-                <Border x:Name="GhostPanel" CornerRadius="3" BorderThickness="1" Visibility="Collapsed"
-                        Background="{DynamicResource Hkd.AccentSoft}" BorderBrush="{DynamicResource Hkd.Accent}" />
+                <Rectangle x:Name="GhostPanel" RadiusX="3" RadiusY="3" StrokeThickness="1.5" StrokeDashArray="3 2"
+                           Visibility="Collapsed" Fill="{DynamicResource Hkd.GhostFill}" Stroke="{DynamicResource Hkd.Accent}" />
                 <Border x:Name="MiniPanel" CornerRadius="3" BorderThickness="1" ClipToBounds="True"
                         Background="{DynamicResource Hkd.MiniPanel}" BorderBrush="{DynamicResource Hkd.CardBorderHover}">
                   <StackPanel Margin="3.5,4,3.5,0">
@@ -138,11 +140,12 @@
                   </StackPanel>
                 </Border>
                 <Border x:Name="MiniHandle" CornerRadius="2" Background="{DynamicResource Hkd.Accent}" />
-              </Canvas>
+                </Canvas>
+              </Border>
             </Grid>
             <!-- 画面の台 -->
-            <Border Width="26" Height="9" Background="{DynamicResource Hkd.ScreenStroke}" HorizontalAlignment="Center" />
-            <Border Width="70" Height="4" CornerRadius="2" Background="{DynamicResource Hkd.ScreenStroke}" HorizontalAlignment="Center" />
+            <Border Width="28" Height="10" Background="{DynamicResource Hkd.ScreenStand}" HorizontalAlignment="Center" />
+            <Border Width="78" Height="5" CornerRadius="2.5" Background="{DynamicResource Hkd.ScreenStand}" HorizontalAlignment="Center" />
           </StackPanel>
 
           <StackPanel Grid.Column="1" Margin="22,0,0,0" VerticalAlignment="Center">
@@ -232,7 +235,7 @@
           <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE790;" />
           <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
             <TextBlock Style="{StaticResource SettingName}" Text="色" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="棚とこの画面を、明るい色（ライト）か暗い色（ダーク）にします。" />
+            <TextBlock Style="{StaticResource SettingHint}" Text="棚とこの画面を、明るい色か暗い色にします。" />
           </StackPanel>
         </DockPanel>
       </Border>

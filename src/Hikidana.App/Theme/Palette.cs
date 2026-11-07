@@ -64,11 +64,13 @@ internal static class Palette
             Set(resources, "Hkd.ToggleFillOffHover", 0x0BFFFFFF);
             Set(resources, "Hkd.ToggleKnobOff", 0xC5FFFFFF);
             Set(resources, "Hkd.FocusStroke", 0xFFFFFFFF);
-            Set(resources, "Hkd.ScreenFill", 0x12FFFFFF);
-            Set(resources, "Hkd.ScreenStroke", 0x33FFFFFF);
-            Set(resources, "Hkd.ScreenTaskbar", 0x1FFFFFFF);
-            Set(resources, "Hkd.MiniPanel", 0xFF3A3A3A);
-            Set(resources, "Hkd.MiniCard", 0x24FFFFFF);
+            Set(resources, "Hkd.ScreenBezel", 0xFF0B0B0B);
+            Set(resources, "Hkd.ScreenBezelEdge", 0x38FFFFFF);
+            Set(resources, "Hkd.ScreenStand", 0xFF555555);
+            Set(resources, "Hkd.ScreenTaskbar", 0xE61C1C1C);
+            Set(resources, "Hkd.MiniPanel", 0xFF2C2C2C);
+            Set(resources, "Hkd.MiniCard", 0x26FFFFFF);
+            Set(resources, "Hkd.GhostFill", 0x2EFFFFFF);
         }
         else
         {
@@ -102,11 +104,13 @@ internal static class Palette
             Set(resources, "Hkd.ToggleFillOffHover", 0x0F000000);
             Set(resources, "Hkd.ToggleKnobOff", 0x9E000000);
             Set(resources, "Hkd.FocusStroke", 0xE4000000);
-            Set(resources, "Hkd.ScreenFill", 0x0D000000);
-            Set(resources, "Hkd.ScreenStroke", 0x2E000000);
-            Set(resources, "Hkd.ScreenTaskbar", 0x17000000);
-            Set(resources, "Hkd.MiniPanel", 0xFFFFFFFF);
-            Set(resources, "Hkd.MiniCard", 0x14000000);
+            Set(resources, "Hkd.ScreenBezel", 0xFF2B2B2B);
+            Set(resources, "Hkd.ScreenBezelEdge", 0x00000000);
+            Set(resources, "Hkd.ScreenStand", 0xFFC2C2C2);
+            Set(resources, "Hkd.ScreenTaskbar", 0xD9F3F3F3);
+            Set(resources, "Hkd.MiniPanel", 0xFFFAFAFA);
+            Set(resources, "Hkd.MiniCard", 0x17000000);
+            Set(resources, "Hkd.GhostFill", 0x99FFFFFF);
         }
 
         Set(resources, "Hkd.Accent", accent);
@@ -115,6 +119,12 @@ internal static class Palette
         Set(resources, "Hkd.AccentHover", Color.FromArgb(0xE6, accent.R, accent.G, accent.B));
         Set(resources, "Hkd.AccentPressed", Color.FromArgb(0xCC, accent.R, accent.G, accent.B));
         Set(resources, "Hkd.AccentSoft", Color.FromArgb(0x2E, accent.R, accent.G, accent.B));
+
+        // 設定の画面の「画面の図」の壁紙: アクセント色をうすく混ぜたグラデーション（Windows 11 の壁紙のような色合い）
+        var desk = IsDark ? Color.FromRgb(0x1C, 0x1C, 0x1C) : Colors.White;
+        var wallpaper = new LinearGradientBrush(Mix(desk, accent, IsDark ? 0.28 : 0.14), Mix(desk, accent, IsDark ? 0.62 : 0.5), new Point(0, 0), new Point(1, 1));
+        wallpaper.Freeze();
+        resources["Hkd.ScreenWallpaper"] = wallpaper;
         Changed?.Invoke();
     }
 
@@ -165,6 +175,12 @@ internal static class Palette
 
         return dark ? Color.FromRgb(0x60, 0xCD, 0xFF) : Color.FromRgb(0x00, 0x5F, 0xB8);
     }
+
+    /// <summary>2 つの色を混ぜる（<paramref name="amount"/> が 0 なら <paramref name="from"/>、1 なら <paramref name="to"/>）。</summary>
+    private static Color Mix(Color from, Color to, double amount) => Color.FromRgb(
+        (byte)Math.Round(from.R + ((to.R - from.R) * amount)),
+        (byte)Math.Round(from.G + ((to.G - from.G) * amount)),
+        (byte)Math.Round(from.B + ((to.B - from.B) * amount)));
 
     private static void Set(ResourceDictionary resources, string key, uint argb) =>
         Set(resources, key, Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb));

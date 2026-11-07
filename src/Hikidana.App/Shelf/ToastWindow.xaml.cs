@@ -57,10 +57,16 @@ public partial class ToastWindow : Window
         ActionButton.Content = actionText;
         ActionButton.Visibility = actionText is null ? Visibility.Collapsed : Visibility.Visible;
 
-        // 見せる前に中身の大きさを測って、ウインドウの大きさと置き場所を決める（ちらつかないように）
+        // 見せる前に中身の大きさを測って、ウインドウの大きさと置き場所を決める（ちらつかないように）。
+        // 幅は少し余らせてから、その幅で測り直して高さを決める（ぴったりの幅だと、画素への丸めで最後の字だけが
+        // 次の行へ折り返し、ウインドウの高さが足りずに字が切れることがあった）。
+        Message.InvalidateMeasure();
+        Card.InvalidateMeasure();
         Card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var size = Card.DesiredSize;
-        var rect = layout.Toast((int)Math.Ceiling(size.Width * layout.Scale), (int)Math.Ceiling(size.Height * layout.Scale), panelOpen);
+        var width = Math.Min(Card.MaxWidth, Math.Ceiling(Card.DesiredSize.Width) + 2);
+        Card.Measure(new Size(width, double.PositiveInfinity));
+        var height = Math.Ceiling(Card.DesiredSize.Height);
+        var rect = layout.Toast((int)Math.Ceiling(width * layout.Scale), (int)Math.Ceiling(height * layout.Scale), panelOpen);
         WindowHelper.Place(this, rect);
         if (!IsVisible)
         {

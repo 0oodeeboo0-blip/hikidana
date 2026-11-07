@@ -33,6 +33,7 @@ internal sealed class ShelfController : IDisposable
     private readonly ToastWindow toast = new();
     private readonly ForegroundWatcher foreground = new();
     private readonly DispatcherTimer clock = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly DispatcherTimer leaveTimer = new() { Interval = TimeSpan.FromMilliseconds(700) };
     private readonly Dispatcher dispatcher;
     private ShelfLayout layout = null!;
     private bool isOpen;
@@ -55,7 +56,19 @@ internal sealed class ShelfController : IDisposable
         dispatcher = Dispatcher.CurrentDispatcher;
 
         handle.Clicked += Toggle;
+        handle.HoverDwelled += Open;
+        handle.OpenOnHover = settings.OpenOnHover;
         lastExternal = CurrentTarget();
+        shelf.OpenOnHoverChanged += SetOpenOnHover;
+        shelf.MouseEnter += (_, _) => leaveTimer.Stop();
+        shelf.MouseLeave += (_, _) =>
+        {
+            if (settings.OpenOnHover && isOpen)
+            {
+                leaveTimer.Start();
+            }
+        };
+        leaveTimer.Tick += (_, _) => CloseIfLeft();
         handle.Dragged += OnHandleDragged;
         handle.DragFinished += SaveSettings;
         handle.Dropped += OnDropped;
@@ -88,6 +101,7 @@ internal sealed class ShelfController : IDisposable
         Refresh();
         shelf.ShowPaused(settings.Paused);
         shelf.ShowKeepOpen(keepOpen);
+        shelf.ShowOpenOnHover(settings.OpenOnHover);
 
         store.Changed += OnStoreChanged;
         foreground.Changed += OnForegroundChanged;
@@ -132,6 +146,11 @@ internal sealed class ShelfController : IDisposable
         isOpen = true;
         AnimateOpening();
         handle.Hide();
+        if (settings.OpenOnHover)
+        {
+            // 棚に入らずに離れていったときも閉じるよう、見張り始める
+            leaveTimer.Start();
+        }
     }
 
     /// <summary>
@@ -147,6 +166,7 @@ internal sealed class ShelfController : IDisposable
 
         var wasTyping = typing;
         typing = false;
+        leaveTimer.Stop();
         StopOpening();
         shelf.Hide();
         shelf.ResetView();
@@ -196,6 +216,7 @@ internal sealed class ShelfController : IDisposable
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         clock.Stop();
+        leaveTimer.Stop();
         tray?.Dispose();
         foreground.Dispose();
         toast.Close();
@@ -278,6 +299,48 @@ internal sealed class ShelfController : IDisposable
         {
             Log.Warn("設定を保存できませんでした。", ex);
         }
+    }
+
+    /// <summary>「マウスを乗せるだけで開く」を入り切りする。</summary>
+    private void SetOpenOnHover(bool on)
+    {
+        settings.OpenOnHover = on;
+        handle.OpenOnHover = on;
+        shelf.ShowOpenOnHover(on);
+        SaveSettings();
+        Log.Info(on ? "取っ手にマウスを乗せるだけで開くようにしました。" : "取っ手をクリックしたときに開くようにしました。");
+        ShowToast(
+            on ? "取っ手にマウスを乗せるだけで、棚が開くようにしました。棚からマウスを離すと閉じます。" : "取っ手をクリックしたときに、棚が開くようにしました。",
+            ToastKind.Info,
+            TimeSpan.FromSeconds(5));
+    }
+
+    /// <summary>
+    /// マウスを乗せるだけで開くときは、棚からマウスが離れたら閉じる。
+    /// ただし、メニューを開いている間、検索で打っている間、ドラッグの間、「開いたままにする」のときは閉じない。
+    /// </summary>
+    private void CloseIfLeft()
+    {
+        leaveTimer.Stop();
+        if (!isOpen || !settings.OpenOnHover || keepOpen || typing || dragging || ShelfWindow.IsMenuOpen)
+        {
+            return;
+        }
+
+        var (x, y) = WindowHelper.CursorPosition();
+        if (layout.Panel.Contains(x, y))
+        {
+            return;
+        }
+
+        if (layout.PanelReach.Contains(x, y))
+        {
+            // 棚と画面の端のすきま（取っ手のあたり）にいる: まだ閉じずに、少ししてからまた見る
+            leaveTimer.Start();
+            return;
+        }
+
+        Close();
     }
 
     private void SetPaused(bool paused)
@@ -718,6 +781,7 @@ internal sealed class ShelfController : IDisposable
     [
         new(1, isOpen ? "棚を閉じる" : "棚を開く", IsDefault: true),
         new(2, "記録を止める", Checked: settings.Paused),
+        new(6, "マウスを乗せるだけで開く", Checked: settings.OpenOnHover),
         TrayMenuItem.Separator,
         new(3, "しまってある場所を開く"),
         new(4, "記録（ログ）の場所を開く"),
@@ -743,6 +807,9 @@ internal sealed class ShelfController : IDisposable
                 break;
             case 5:
                 Application.Current.Shutdown();
+                break;
+            case 6:
+                SetOpenOnHover(!settings.OpenOnHover);
                 break;
         }
     }

@@ -22,6 +22,7 @@ public partial class ShelfWindow : Window
     private const double DragThreshold = 8;
 
     private static readonly CompareInfo Compare = CultureInfo.GetCultureInfo("ja-JP").CompareInfo;
+    private static int openMenus;
     private readonly ICollectionView view;
     private Point? pressedAt;
     private ClipItem? pressedItem;
@@ -32,6 +33,13 @@ public partial class ShelfWindow : Window
     private ClipItem? selected;
     private bool typing;
     private bool acrylic;
+
+    static ShelfWindow()
+    {
+        // 棚のメニュー（右クリック・「…」）が開いている間は、マウスが棚の外（メニューの上）にあっても閉じないため
+        EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.OpenedEvent, new RoutedEventHandler((_, _) => openMenus++));
+        EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.ClosedEvent, new RoutedEventHandler((_, _) => openMenus = Math.Max(0, openMenus - 1)));
+    }
 
     public ShelfWindow()
     {
@@ -65,6 +73,12 @@ public partial class ShelfWindow : Window
     public event Action? OpenLogsRequested;
 
     public event Action? QuitRequested;
+
+    /// <summary>「マウスを乗せるだけで開く」を入り切りした。</summary>
+    public event Action<bool>? OpenOnHoverChanged;
+
+    /// <summary>メニュー（右クリック・「…」）が開いている。</summary>
+    public static bool IsMenuOpen => openMenus > 0;
 
     /// <summary>検索の欄をクリックした（キーボードで打てるよう、棚を前に出してほしい）。</summary>
     public event Action? TypingRequested;
@@ -126,6 +140,8 @@ public partial class ShelfWindow : Window
         PauseToggle.Content = paused ? "\uE768" : "\uE769";
         PauseToggle.ToolTip = paused ? "記録を再開する" : "記録を止める";
     }
+
+    public void ShowOpenOnHover(bool on) => OpenOnHoverItem.IsChecked = on;
 
     public void ShowKeepOpen(bool keepOpen)
     {
@@ -567,6 +583,8 @@ public partial class ShelfWindow : Window
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
+
+    private void OpenOnHover_Click(object sender, RoutedEventArgs e) => OpenOnHoverChanged?.Invoke(OpenOnHoverItem.IsChecked);
 
     private void OpenData_Click(object sender, RoutedEventArgs e) => OpenDataRequested?.Invoke();
 

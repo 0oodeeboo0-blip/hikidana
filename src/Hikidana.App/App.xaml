@@ -49,20 +49,23 @@
       </Setter>
     </Style>
 
-    <!-- 記号だけの小さなボタン（ピン留め・コピー・消す・閉じるなど） -->
+    <!--
+      記号だけの小さなボタン（ピン留め・コピー・消す・閉じるなど）。記号のフォントは中身（ContentPresenter）にだけ付ける。
+      ボタンそのものに付けると、ボタンのメニューや説明の吹き出しまで記号のフォントになり、日本語が四角（□）になる。
+    -->
     <Style x:Key="IconButton" TargetType="Button">
       <Setter Property="Width" Value="30" />
       <Setter Property="Height" Value="30" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource Hkd.TextSecondary}" />
-      <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
       <Setter Property="FontSize" Value="14" />
       <Setter Property="FocusVisualStyle" Value="{x:Null}" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Border x:Name="Frame" Background="{TemplateBinding Background}" CornerRadius="4">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                TextElement.FontFamily="{StaticResource IconFont}" />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -84,14 +87,14 @@
       <Setter Property="Height" Value="30" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource Hkd.TextSecondary}" />
-      <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
       <Setter Property="FontSize" Value="14" />
       <Setter Property="FocusVisualStyle" Value="{x:Null}" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ToggleButton">
             <Border x:Name="Frame" Background="{TemplateBinding Background}" CornerRadius="4">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                TextElement.FontFamily="{StaticResource IconFont}" />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">

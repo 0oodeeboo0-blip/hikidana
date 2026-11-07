@@ -75,6 +75,29 @@ public sealed class ShelfLayout
     /// <summary>棚のウインドウ。</summary>
     public PixelRect Panel { get; }
 
+    /// <summary>
+    /// 棚の「届く範囲」: 棚の四角を、端の側へ作業領域の端まで広げて、取っ手の場所も含めたもの。
+    /// マウスを乗せるだけで開くとき、マウスがこの外に出たら閉じる（棚と画面の端のすきまにいるだけでは閉じない）。
+    /// </summary>
+    public PixelRect PanelReach
+    {
+        get
+        {
+            var extended = Edge switch
+            {
+                ShelfEdge.Right => PixelRect.FromEdges(Panel.X, Panel.Y, WorkArea.Right, Panel.Bottom),
+                ShelfEdge.Left => PixelRect.FromEdges(WorkArea.X, Panel.Y, Panel.Right, Panel.Bottom),
+                ShelfEdge.Top => PixelRect.FromEdges(Panel.X, WorkArea.Y, Panel.Right, Panel.Bottom),
+                _ => PixelRect.FromEdges(Panel.X, Panel.Y, Panel.Right, WorkArea.Bottom),
+            };
+            return PixelRect.FromEdges(
+                Math.Min(extended.X, Handle.X),
+                Math.Min(extended.Y, Handle.Y),
+                Math.Max(extended.Right, Handle.Right),
+                Math.Max(extended.Bottom, Handle.Bottom));
+        }
+    }
+
     /// <summary>右か左の端なら true（縦に長い取っ手）。</summary>
     public bool IsVertical => Edge is ShelfEdge.Right or ShelfEdge.Left;
 

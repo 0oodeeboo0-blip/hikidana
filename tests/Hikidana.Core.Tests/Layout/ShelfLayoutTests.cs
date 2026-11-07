@@ -129,4 +129,18 @@ public sealed class ShelfLayoutTests
         Assert.Equal(bottom.Panel.Bottom, bottom.PanelOpening(0.5).Bottom);
         Assert.Equal(1, bottom.PanelOpening(0).Height);
     }
+
+    [Fact]
+    public void ReachCoversTheGapToTheEdgeAndTheHandle()
+    {
+        var right = ShelfLayout.Compute(ShelfEdge.Right, WorkArea, 1.0, 0.0);
+        Assert.True(right.PanelReach.Contains(1919, 500), "棚と画面の端のすきま");
+        Assert.True(right.PanelReach.Contains(1919, 2), "いちばん上の取っ手");
+        Assert.True(right.PanelReach.Contains(1600, 500), "棚の上");
+        Assert.False(right.PanelReach.Contains(1500, 500), "棚の左の外");
+
+        var top = ShelfLayout.Compute(ShelfEdge.Top, WorkArea, 1.0, 0.5);
+        Assert.True(top.PanelReach.Contains(top.Handle.CenterX, 0));
+        Assert.False(top.PanelReach.Contains(top.Handle.CenterX, top.Panel.Bottom + 5));
+    }
 }

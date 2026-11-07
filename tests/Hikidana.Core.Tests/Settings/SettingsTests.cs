@@ -24,6 +24,7 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(ShelfEdge.Right, settings.Edge);
         Assert.Equal(0.5, settings.HandlePosition);
         Assert.True(settings.CloseAfterPaste);
+        Assert.False(settings.OpenOnHover);
         Assert.Equal("system", settings.Theme);
     }
 
@@ -31,7 +32,7 @@ public sealed class SettingsTests : IDisposable
     public void SavedSettingsComeBack()
     {
         var store = new SettingsStore(Path.Combine(dir, "settings.json"));
-        store.Save(new AppSettings { Edge = ShelfEdge.Left, HandlePosition = 0.2, Monitor = @"\\.\DISPLAY2", ExcludedApps = ["KeePass.exe"], Paused = true });
+        store.Save(new AppSettings { Edge = ShelfEdge.Left, HandlePosition = 0.2, Monitor = @"\\.\DISPLAY2", ExcludedApps = ["KeePass.exe"], Paused = true, OpenOnHover = true });
 
         var loaded = store.Load();
         Assert.Equal(ShelfEdge.Left, loaded.Edge);
@@ -39,6 +40,7 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(@"\\.\DISPLAY2", loaded.Monitor);
         Assert.SequenceEqual(["KeePass.exe"], loaded.ExcludedApps);
         Assert.True(loaded.Paused);
+        Assert.True(loaded.OpenOnHover);
         Assert.Contains("\"edge\": \"Left\"", File.ReadAllText(store.Path));
         Assert.False(File.Exists(store.Path + ".tmp"));
     }

@@ -90,6 +90,49 @@ public sealed class AppTests
         Assert.NotEqual((nint)0, await app.WaitForWindowAsync("Hikidana の知らせ", TimeSpan.FromSeconds(3)), "知らせが出ていません。");
     }
 
+    [Fact(WindowsOnly = true)]
+    public async Task HoveringTheHandleOpensTheShelfAndLeavingClosesIt()
+    {
+        var page = await ChromiumPage.SharedAsync();
+        using var app = await RunningApp.StartAsync("--hover");
+        await app.FocusAsync(page);
+        Assert.True(TestNative.GetWindowRect(app.Handle, out var handle));
+
+        // 取っ手にマウスを乗せたままにすると開く（クリックはしない）
+        TestMouse.MoveTo(handle.Right - 3, (handle.Top + handle.Bottom) / 2);
+        var shelf = await app.WaitForWindowAsync("Hikidana", TimeSpan.FromSeconds(3));
+        Assert.NotEqual((nint)0, shelf, "取っ手にマウスを乗せても、棚が開きませんでした。");
+        Assert.Equal(page.Window, TestNative.GetForegroundWindow(), $"前面: {Desktop.ForegroundDescription()}");
+        await Task.Delay(400);
+        ScreenCapture.Save("app-hover-open");
+
+        // 棚の上に動かしてから、Edge のページへ離れると閉じる
+        Assert.True(TestNative.GetWindowRect(shelf, out var rect));
+        TestMouse.MoveTo((rect.Left + rect.Right) / 2, (rect.Top + rect.Bottom) / 2);
+        await Task.Delay(800);
+        Assert.True(TestNative.IsWindowVisible(shelf), "棚の上にマウスがあるのに閉じました。");
+        var viewport = page.Viewport();
+        TestMouse.MoveTo((viewport.Left + viewport.Right) / 2, (viewport.Top + viewport.Bottom) / 2);
+        Assert.True(await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(shelf), TimeSpan.FromSeconds(4)), "棚からマウスを離しても、閉じませんでした。");
+    }
+
+    [Fact(WindowsOnly = true)]
+    public async Task MoreMenuShowsItsItems()
+    {
+        var page = await ChromiumPage.SharedAsync();
+        using var app = await RunningApp.StartAsync();
+        var shelf = await app.OpenShelfAsync(page);
+        Assert.True(TestNative.GetWindowRect(shelf, out var rect));
+        var scale = (rect.Right - rect.Left) / 360.0;
+
+        // 上の帯の「…」（右から 2 つ目のボタン）を押して、メニューの字が読めるか画面写真に残す
+        await TestMouse.ClickAsync(rect.Right - (int)(53 * scale), rect.Top + (int)(25 * scale), hoverMilliseconds: 300);
+        await Task.Delay(700);
+        ScreenCapture.Save("app-more-menu");
+        var menu = await Desktop.WaitForWindowAsync(w => Desktop.ProcessIdOf(w) == (uint)app.ProcessId && Desktop.ClassOf(w).StartsWith("HwndWrapper", StringComparison.Ordinal) && w != shelf && Desktop.TitleOf(w).Length == 0, TimeSpan.FromSeconds(2));
+        Assert.NotEqual((nint)0, menu, "「…」のメニューが出ませんでした。");
+    }
+
     /// <summary>棚のいちばん上のカードの、画像のあたり（本当の画素）。</summary>
     private static (int X, int Y) FirstCardPoint(nint shelf)
     {
@@ -131,7 +174,9 @@ public sealed class AppTests
         /// <summary>画面の端の取っ手のウインドウ。</summary>
         public nint Handle { get; }
 
-        public static async Task<RunningApp> StartAsync()
+        public int ProcessId => process.Id;
+
+        public static async Task<RunningApp> StartAsync(params string[] extra)
         {
             var exe = Environment.GetEnvironmentVariable("HIKIDANA_EXE");
             if (string.IsNullOrEmpty(exe) || !File.Exists(exe))
@@ -140,7 +185,7 @@ public sealed class AppTests
             }
 
             var start = new ProcessStartInfo(exe) { UseShellExecute = false };
-            foreach (var argument in new[] { "--demo", "--theme", "light" })
+            foreach (var argument in new[] { "--demo", "--theme", "light" }.Concat(extra))
             {
                 start.ArgumentList.Add(argument);
             }
@@ -160,12 +205,18 @@ public sealed class AppTests
             return new RunningApp(process, handle);
         }
 
-        /// <summary>Edge を前面にしてから（利用者が ChatGPT の入力欄で作業している様子）、取っ手をクリックして棚を開く。</summary>
-        public async Task<nint> OpenShelfAsync(ChromiumPage page)
+        /// <summary>Edge を前面にする（利用者が ChatGPT の入力欄で作業している様子）。</summary>
+        public async Task FocusAsync(ChromiumPage page)
         {
             InputSender.TapMaskKey();
             TestNative.SetForegroundWindow(page.Window);
             Assert.True(await Desktop.WaitUntilAsync(() => TestNative.GetForegroundWindow() == page.Window, TimeSpan.FromSeconds(5)), $"Edge を前面にできませんでした（前面: {Desktop.ForegroundDescription()}）。");
+        }
+
+        /// <summary>Edge を前面にしてから、取っ手をクリックして棚を開く。</summary>
+        public async Task<nint> OpenShelfAsync(ChromiumPage page)
+        {
+            await FocusAsync(page);
 
             Assert.True(TestNative.GetWindowRect(Handle, out var rect));
             Console.WriteLine($"       取っ手: ({rect.Left}, {rect.Top})-({rect.Right}, {rect.Bottom})");

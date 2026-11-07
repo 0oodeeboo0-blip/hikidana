@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using Hikidana.App.Interop;
 using Hikidana.Core.Layout;
 
@@ -11,6 +12,10 @@ public partial class HandleWindow : Window
     /// <summary>これだけ動かしたら、クリックではなくドラッグとみなす（DIP）。</summary>
     private const double DragThreshold = 6;
 
+    /// <summary>乗せたままにしたら開くまでの時間（通りかかっただけでは開かないように）。</summary>
+    private static readonly TimeSpan HoverDelay = TimeSpan.FromMilliseconds(300);
+
+    private readonly DispatcherTimer hoverTimer = new() { Interval = HoverDelay };
     private ShelfLayout? layout;
     private string chevron = string.Empty;
     private bool dropping;
@@ -22,7 +27,21 @@ public partial class HandleWindow : Window
     public HandleWindow()
     {
         InitializeComponent();
+        hoverTimer.Tick += (_, _) =>
+        {
+            hoverTimer.Stop();
+            if (OpenOnHover && Root.IsMouseOver && !pressed && !dropping)
+            {
+                HoverDwelled?.Invoke();
+            }
+        };
     }
+
+    /// <summary>マウスを乗せるだけで開く（乗せたままにすると <see cref="HoverDwelled"/>）。</summary>
+    public bool OpenOnHover { get; set; }
+
+    /// <summary>マウスを乗せたまま、少し待った。</summary>
+    public event Action? HoverDwelled;
 
     /// <summary>クリックした。</summary>
     public event Action? Clicked;
@@ -108,10 +127,18 @@ public partial class HandleWindow : Window
 
     private int Along((int X, int Y) point) => layout?.IsVertical == false ? point.X : point.Y;
 
-    private void Root_MouseEnter(object sender, MouseEventArgs e) => Expand(true);
+    private void Root_MouseEnter(object sender, MouseEventArgs e)
+    {
+        Expand(true);
+        if (OpenOnHover)
+        {
+            hoverTimer.Start();
+        }
+    }
 
     private void Root_MouseLeave(object sender, MouseEventArgs e)
     {
+        hoverTimer.Stop();
         if (!pressed && !dropping)
         {
             Expand(false);
@@ -174,6 +201,7 @@ public partial class HandleWindow : Window
         }
 
         e.Handled = true;
+        hoverTimer.Stop();
         pressed = true;
         dragging = false;
         var cursor = WindowHelper.CursorPosition();

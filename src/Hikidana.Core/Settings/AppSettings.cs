@@ -21,6 +21,12 @@ public sealed class AppSettings
     /// <summary>画面の色: system（Windows に合わせる）・light・dark。</summary>
     public string Theme { get; set; } = "system";
 
+    /// <summary>
+    /// 取っ手にマウスを乗せるだけで棚を開く（少しのあいだ乗せたままにしたとき）。このときは、棚からマウスが離れると閉じる。
+    /// false なら、取っ手をクリックしたときに開く。
+    /// </summary>
+    public bool OpenOnHover { get; set; }
+
     /// <summary>貼り付けたら棚を閉じる。</summary>
     public bool CloseAfterPaste { get; set; } = true;
 

@@ -8,7 +8,7 @@ namespace Hikidana.App;
 /// 起動のときの指定（試すときと、CI で画面写真を撮るとき用）。
 /// <c>--theme light|dark|system</c>: 画面の色。<c>--demo</c>: 見本の中身で動かす（本物の棚と設定は使わない）。
 /// <c>--open</c>: 起動したら棚を開く。<c>--edge right|left|top|bottom</c>: 棚の端。<c>--position 0〜1</c>: 取っ手の位置。
-/// <c>--data フォルダー</c>: しまう場所。
+/// <c>--data フォルダー</c>: しまう場所。<c>--hover</c>: 取っ手にマウスを乗せるだけで開く。
 /// </summary>
 public sealed record AppOptions
 {
@@ -23,6 +23,9 @@ public sealed record AppOptions
     public double? HandlePosition { get; init; }
 
     public string? DataRoot { get; init; }
+
+    /// <summary>取っ手にマウスを乗せるだけで開く（--hover）。</summary>
+    public bool OpenOnHover { get; init; }
 
     public static AppOptions Parse(IReadOnlyList<string> args)
     {
@@ -41,6 +44,9 @@ public sealed record AppOptions
                     break;
                 case "--open":
                     options = options with { Open = true };
+                    break;
+                case "--hover":
+                    options = options with { OpenOnHover = true };
                     break;
                 case "--edge" when next is not null && Enum.TryParse<ShelfEdge>(next, ignoreCase: true, out var edge):
                     options = options with { Edge = edge };
@@ -76,6 +82,11 @@ public sealed record AppOptions
         if (HandlePosition is { } position)
         {
             settings.HandlePosition = position;
+        }
+
+        if (OpenOnHover)
+        {
+            settings.OpenOnHover = true;
         }
 
         settings.Normalize();

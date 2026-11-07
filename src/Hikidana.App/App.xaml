@@ -180,7 +180,7 @@
                 <Ellipse x:Name="Knob" Width="12" Height="12" Margin="4,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
                          Fill="{DynamicResource Hkd.ToggleKnobOff}">
                   <Ellipse.RenderTransform>
-                    <TranslateTransform x:Name="KnobShift" X="0" />
+                    <TranslateTransform X="0" />
                   </Ellipse.RenderTransform>
                 </Ellipse>
               </Grid>
@@ -194,7 +194,7 @@
                 <Trigger.EnterActions>
                   <BeginStoryboard>
                     <Storyboard>
-                      <DoubleAnimation Storyboard.TargetName="KnobShift" Storyboard.TargetProperty="X" To="20" Duration="0:0:0.16">
+                      <DoubleAnimation Storyboard.TargetName="Knob" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" To="20" Duration="0:0:0.16">
                         <DoubleAnimation.EasingFunction>
                           <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>
@@ -205,7 +205,7 @@
                 <Trigger.ExitActions>
                   <BeginStoryboard>
                     <Storyboard>
-                      <DoubleAnimation Storyboard.TargetName="KnobShift" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.16">
+                      <DoubleAnimation Storyboard.TargetName="Knob" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" To="0" Duration="0:0:0.16">
                         <DoubleAnimation.EasingFunction>
                           <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>

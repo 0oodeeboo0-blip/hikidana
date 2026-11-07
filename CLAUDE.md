@@ -12,10 +12,14 @@
   net10.0 にしてあるので作業環境でもビルドできる（動くのは Windows だけ。アセンブリに SupportedOSPlatform("windows")）。
 - `src/Hikidana.App`: WPF のアプリ（net10.0-windows）。画面と Windows に固有の部分だけ。発行では .NET ごと 1 つの exe にまとめる。
   - `Shelf/ShelfController.cs`: 取っ手・棚・知らせのウインドウを動かす中心（開く・閉じる、置き場所、貼り付け、設定の保存）。
+    設定の画面からの変更は `Shelf/ShelfController.Settings.cs`（`ISettingsHost` を受けて、すぐ反映して保存する）。
+  - `Settings/SettingsWindow.xaml`: 設定の画面（Windows 11 の設定アプリの作り。Mica。棚の位置は画面の図とボタンで選ぶ）。
+    ふつうのウインドウ（前面になる）。標準の部品は WPF の Fluent（ThemeMode）の見た目で、色を変えると `App.ApplyTheme` でその場で切り替わる。
   - `Shelf/ShelfWindow.xaml`（棚とカード）、`HandleWindow.xaml`（端の取っ手）、`ToastWindow.xaml`（知らせ）。
     どれも WS_EX_NOACTIVATE でフォーカスを奪わず、置き場所は本当の画素で SetWindowPos する（`Interop/WindowHelper.cs`）。
   - `Theme/Palette.cs`: 色（案A）。`Hkd.` で始まる名前のブラシを入れ、XAML は DynamicResource で使う。
   - `Demo/DemoData.cs`: `--demo` の見本（一時フォルダーの別の棚）。CI の画面写真と、アプリを動かすテストで使う。
+  - サインインしたら起動: `Hikidana.Win32/StartupRegistration.cs`（HKCU の Run と StartupApproved）。見本のときは使わない。
   - 置き場所の計算（`Core/Layout/ShelfLayout.cs`）、設定（`Core/Settings`）、記録（`Core/Diagnostics/Log.cs`）は Core にあり、手元でテストできる。
 - `tests/Hikidana.Testing`: 小さなテストの仕組み（`[Fact]`、`Assert`、`TestRunner`）。NuGet を使わないので、作業環境でも動く。
   `[Fact(WindowsOnly = true)]` は Windows でだけ、`[Fact(Sta = true)]` は STA のスレッドで動く。
@@ -25,6 +29,7 @@
   （`Pages/paste-test.html`。チャットのアプリと同じく paste イベントで受け取り、中身をウインドウの題名に JSON で書く）と
   メモ帳に、本当に貼り付ける。Windows でだけ動く（作業環境ではビルドと「全部飛ばし」だけ確かめられる）。
   途中で環境が足りない（Edge が無いなど）とわかったら `SkipException` を投げる（失敗ではなく飛ばしになる）。
+  アプリの部品は `Support/Automation.cs`（UI オートメーション）で x:Name（= AutomationId）から場所を調べて、マウスで押す。
 
 ## ビルドと確認
 
@@ -37,14 +42,15 @@
   `git fetch --depth 1 origin +refs/heads/screenshots:refs/remotes/origin/screenshots && git show origin/screenshots:startup-light.png > /tmp/startup-light.png`
   - `paste-*.png`: Windows の部分のテストで貼り付けた直後の画面。`failed-*.png`: 失敗したときの画面。
   - `app-*.png`: 発行したアプリで、取っ手から棚を開き、カードをクリックして Edge に貼った様子。
-  - `startup-*.png`: 見本の中身で棚を開いた様子（ライト・ダーク・左の端・上の端・閉じた状態）。
+  - `startup-*.png`: 見本の中身で棚を開いた様子（ライト・ダーク・左の端・上の端・閉じた状態）と、設定の画面（`startup-settings-*`）。
 - アプリのビルド結果は、利用者が Actions の成果物 `Hikidana-win-x64` からダウンロードする（GitHub へのログインが要る）。
 - 配布: `v0.1.0` のようなタグを push するか、Actions の「Release」で「Run workflow」を押して版を入れると、
   `.github/workflows/release.yml` が zip を作って GitHub の Releases に置く
   （説明は `docs/releases/<版>.md`、無ければ `docs/releases/default.md`。「-」を含む版は先行版）。
   作業環境からはタグを push できない。出すときは利用者に「Run workflow」を押してもらう。
 - 起動のときの指定: `--theme light|dark|system`、`--demo`（見本の中身。本物の棚と設定は使わない）、`--open`（棚を開いて始める）、
-  `--edge right|left|top|bottom`、`--position 0〜1`（取っ手の位置）、`--data フォルダー`（しまう場所）。
+  `--edge right|left|top|bottom`、`--position 0〜1`（取っ手の位置）、`--data フォルダー`（しまう場所）、
+  `--hover`（マウスを乗せるだけで開く）、`--settings`（設定の画面を開いて始める）。
 - 発行したアプリを動かすテスト（`tests/Hikidana.Win32.Tests/AppTests.cs`）は、環境変数 `HIKIDANA_EXE` に exe の場所を入れたときだけ動く。
 
 ## 注意

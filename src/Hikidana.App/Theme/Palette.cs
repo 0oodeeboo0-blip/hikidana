@@ -15,6 +15,9 @@ internal static class Palette
     /// <summary>いまダークで表示している。</summary>
     public static bool IsDark { get; private set; }
 
+    /// <summary>色を入れ直した（ライトとダークやアクセント色が変わった）。</summary>
+    public static event Action? Changed;
+
     /// <summary>色を決めて入れる。<paramref name="setting"/> は system・light・dark。</summary>
     public static void Apply(Application app, string setting)
     {
@@ -84,6 +87,7 @@ internal static class Palette
         Set(resources, "Hkd.Accent", accent);
         Set(resources, "Hkd.AccentText", accent);
         Set(resources, "Hkd.OnAccent", IsDark ? Colors.Black : Colors.White);
+        Changed?.Invoke();
     }
 
     /// <summary>Windows の設定が変わったときに、色を入れ直す。</summary>

@@ -22,7 +22,7 @@
     棚。作業中のアプリからフォーカスを奪わない（WS_EX_NOACTIVATE。ShelfWindow.xaml.cs）。
     置き場所と大きさは ShelfController が本当の画素で決める。
   -->
-  <Grid>
+  <Grid x:Name="Root">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />

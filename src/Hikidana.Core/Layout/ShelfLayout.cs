@@ -163,6 +163,24 @@ public sealed class ShelfLayout
         return new PixelRect(x, y, width, height);
     }
 
+    /// <summary>
+    /// 開く途中の棚の四角。<paramref name="fraction"/> が 0〜1 で、端の側から伸びていく
+    /// （中身は端と反対の側にくっつけておくので、端から滑り出てくるように見える）。
+    /// </summary>
+    public PixelRect PanelOpening(double fraction)
+    {
+        fraction = double.IsFinite(fraction) ? Math.Clamp(fraction, 0, 1) : 1;
+        var width = Math.Max(1, (int)Math.Round(Panel.Width * fraction));
+        var height = Math.Max(1, (int)Math.Round(Panel.Height * fraction));
+        return Edge switch
+        {
+            ShelfEdge.Right => new PixelRect(Panel.Right - width, Panel.Y, width, Panel.Height),
+            ShelfEdge.Left => new PixelRect(Panel.X, Panel.Y, width, Panel.Height),
+            ShelfEdge.Top => new PixelRect(Panel.X, Panel.Y, Panel.Width, height),
+            _ => new PixelRect(Panel.X, Panel.Bottom - height, Panel.Width, height),
+        };
+    }
+
     /// <summary>取っ手をドラッグしたときの、新しい位置（0〜1）。<paramref name="pointer"/> は端に沿った座標（本当の画素）。</summary>
     public double HandlePositionAt(int pointer, int grabOffset)
     {

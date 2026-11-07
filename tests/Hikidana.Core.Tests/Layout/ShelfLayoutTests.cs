@@ -105,4 +105,28 @@ public sealed class ShelfLayoutTests
         Assert.Equal(1.0, layout.HandlePositionAt(5000, 0));
         Assert.Equal(0.5, layout.HandlePositionAt((1032 - 96) / 2 + 40, 40));
     }
+
+    [Fact]
+    public void OpeningPanelGrowsFromTheEdge()
+    {
+        var right = ShelfLayout.Compute(ShelfEdge.Right, WorkArea, 1.0, 0.5);
+        var half = right.PanelOpening(0.5);
+        Assert.Equal(right.Panel.Right, half.Right);
+        Assert.Equal(180, half.Width);
+        Assert.Equal(right.Panel.Height, half.Height);
+        Assert.Equal(right.Panel, right.PanelOpening(1));
+        Assert.Equal(right.Panel, right.PanelOpening(double.NaN));
+
+        var left = ShelfLayout.Compute(ShelfEdge.Left, WorkArea, 1.0, 0.5);
+        Assert.Equal(left.Panel.X, left.PanelOpening(0.25).X);
+        Assert.Equal(90, left.PanelOpening(0.25).Width);
+
+        var top = ShelfLayout.Compute(ShelfEdge.Top, WorkArea, 1.0, 0.5);
+        Assert.Equal(top.Panel.Y, top.PanelOpening(0.5).Y);
+        Assert.Equal(320, top.PanelOpening(0.5).Height);
+
+        var bottom = ShelfLayout.Compute(ShelfEdge.Bottom, WorkArea, 1.0, 0.5);
+        Assert.Equal(bottom.Panel.Bottom, bottom.PanelOpening(0.5).Bottom);
+        Assert.Equal(1, bottom.PanelOpening(0).Height);
+    }
 }

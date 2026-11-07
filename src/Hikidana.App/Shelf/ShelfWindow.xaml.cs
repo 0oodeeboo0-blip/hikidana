@@ -31,6 +31,7 @@ public partial class ShelfWindow : Window
     private string query = string.Empty;
     private ClipItem? selected;
     private bool typing;
+    private bool acrylic;
 
     public ShelfWindow()
     {
@@ -146,11 +147,44 @@ public partial class ShelfWindow : Window
         }
     }
 
+    /// <summary>
+    /// 中身の大きさ（DIP）と、どちら側にくっつけるか。開くときにウインドウを端から伸ばすので、
+    /// 中身は端と反対の側にくっつけておく（端から滑り出てくるように見える）。
+    /// </summary>
+    public void SetContentSize(double width, double height, Hikidana.Core.Layout.ShelfEdge edge)
+    {
+        Root.Width = width;
+        Root.Height = height;
+        Root.HorizontalAlignment = edge == Hikidana.Core.Layout.ShelfEdge.Left ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        Root.VerticalAlignment = edge == Hikidana.Core.Layout.ShelfEdge.Top ? VerticalAlignment.Bottom : VerticalAlignment.Top;
+    }
+
+    /// <summary>すりガラスにする（使えないときは、ふつうの色の背景）。ライトとダークが変わったときも呼ぶ。</summary>
+    public void ApplyBackdrop()
+    {
+        var tint = Theme.Palette.IsDark ? Color.FromArgb(0xD1, 0x24, 0x24, 0x24) : Color.FromArgb(0xD6, 0xF3, 0xF3, 0xF3);
+        if (Backdrop.IsAvailable && Backdrop.Apply(this, tint))
+        {
+            Background = Brushes.Transparent;
+            acrylic = true;
+            return;
+        }
+
+        if (acrylic)
+        {
+            Backdrop.Remove(this);
+            acrylic = false;
+        }
+
+        SetResourceReference(BackgroundProperty, "Hkd.PanelBackground");
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         WindowHelper.MakeToolWindow(this, noActivate: true);
         WindowHelper.RoundCorners(this);
+        ApplyBackdrop();
     }
 
     private static bool ShiftHeld() => InputSender.HeldModifiers().Any(k => k is LeftShift or RightShift);

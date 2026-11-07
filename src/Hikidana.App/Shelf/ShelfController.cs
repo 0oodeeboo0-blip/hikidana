@@ -41,6 +41,7 @@ internal sealed class ShelfController : IDisposable
     private bool typing;
     private TargetWindow? lastExternal;
     private TrayIcon? tray;
+    private EventHandler? openingFrame;
     private int refreshQueued;
     private bool disposed;
 
@@ -94,6 +95,7 @@ internal sealed class ShelfController : IDisposable
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         clock.Tick += (_, _) => UpdateTimes();
         clock.Start();
+        Theme.Palette.Changed += OnPaletteChanged;
 
         tray = new TrayIcon(TrayTooltip());
         tray.Clicked += Toggle;
@@ -127,9 +129,9 @@ internal sealed class ShelfController : IDisposable
         UpdateTimes();
         shelf.ScrollToTop();
         toast.Hide();
-        shelf.Show();
-        handle.Hide();
         isOpen = true;
+        AnimateOpening();
+        handle.Hide();
     }
 
     /// <summary>
@@ -145,6 +147,7 @@ internal sealed class ShelfController : IDisposable
 
         var wasTyping = typing;
         typing = false;
+        StopOpening();
         shelf.Hide();
         shelf.ResetView();
         handle.Show();
@@ -188,6 +191,8 @@ internal sealed class ShelfController : IDisposable
 
         disposed = true;
         store.Changed -= OnStoreChanged;
+        Theme.Palette.Changed -= OnPaletteChanged;
+        StopOpening();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         clock.Stop();
@@ -205,7 +210,54 @@ internal sealed class ShelfController : IDisposable
         layout = ShelfLayout.Compute(settings.Edge, monitor.WorkArea, monitor.Scale, settings.HandlePosition);
         handle.Apply(layout);
         WindowHelper.Place(handle, layout.Handle);
-        WindowHelper.Place(shelf, layout.Panel);
+        shelf.SetContentSize(layout.Panel.Width / layout.Scale, layout.Panel.Height / layout.Scale, layout.Edge);
+        if (openingFrame is null)
+        {
+            // 開いている途中なら、動きの方で置く
+            WindowHelper.Place(shelf, layout.Panel);
+        }
+    }
+
+    /// <summary>開き始めの大きさ（最後の大きさに対して）。</summary>
+    private const double OpeningStart = 0.35;
+
+    /// <summary>開くときの長さ。</summary>
+    private static readonly TimeSpan OpeningDuration = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>端から滑り出てくるように開く（Windows の「アニメーション効果」が切ってあれば、すぐ開く）。</summary>
+    private void AnimateOpening()
+    {
+        StopOpening();
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            WindowHelper.Place(shelf, layout.Panel);
+            shelf.Show();
+            return;
+        }
+
+        WindowHelper.Place(shelf, layout.PanelOpening(OpeningStart));
+        shelf.Show();
+        var started = Stopwatch.GetTimestamp();
+        openingFrame = (_, _) =>
+        {
+            var t = Math.Min(1, Stopwatch.GetElapsedTime(started) / OpeningDuration);
+            var eased = 1 - Math.Pow(1 - t, 3);
+            WindowHelper.Place(shelf, layout.PanelOpening(OpeningStart + ((1 - OpeningStart) * eased)));
+            if (t >= 1)
+            {
+                StopOpening();
+            }
+        };
+        System.Windows.Media.CompositionTarget.Rendering += openingFrame;
+    }
+
+    private void StopOpening()
+    {
+        if (openingFrame is not null)
+        {
+            System.Windows.Media.CompositionTarget.Rendering -= openingFrame;
+            openingFrame = null;
+        }
     }
 
     private void OnHandleDragged(double position)
@@ -657,6 +709,8 @@ internal sealed class ShelfController : IDisposable
             TaskContinuationOptions.None,
             TaskScheduler.FromCurrentSynchronizationContext());
     }
+
+    private void OnPaletteChanged() => shelf.ApplyBackdrop();
 
     private string TrayTooltip() => settings.Paused ? "Hikidana（記録を止めています）" : "Hikidana";
 

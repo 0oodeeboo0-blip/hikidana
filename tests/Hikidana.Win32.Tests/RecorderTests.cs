@@ -80,9 +80,12 @@ public sealed class RecorderTests : IDisposable
         await RecordAsync([PastePlanner.UnicodeText("別のテキスト")]);
         var again = await RecordAsync([PastePlanner.UnicodeText("同じテキスト")]);
 
-        Assert.Equal(first.Id, again.Id);
+        // 同じテキストは、新しくしまい直して古い方と入れ替える（最初にしまった日時は引き継ぐ）
         Assert.Equal(2, store.Items.Count);
-        Assert.Equal(first.Id, store.Items[0].Id);
+        Assert.Equal(again.Id, store.Items[0].Id);
+        Assert.Equal("同じテキスト", store.ReadText(store.Items[0]));
+        Assert.Equal(first.CreatedAt, again.CreatedAt);
+        Assert.Null(store.Find(first.Id));
     }
 
     [Fact(WindowsOnly = true)]

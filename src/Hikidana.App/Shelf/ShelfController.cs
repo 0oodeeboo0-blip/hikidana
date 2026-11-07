@@ -94,6 +94,7 @@ internal sealed partial class ShelfController : IDisposable
         shelf.OpenDataRequested += () => OpenFolder(store.Root);
         shelf.OpenLogsRequested += () => OpenFolder(Log.Folder ?? store.Root);
         shelf.SettingsRequested += OpenSettings;
+        shelf.ClearRequested += Clear;
         shelf.QuitRequested += () => Application.Current.Shutdown();
     }
 
@@ -579,6 +580,49 @@ internal sealed partial class ShelfController : IDisposable
             Log.Error("コピーの途中で例外", ex);
             ShowToast("コピーできませんでした。もう一度お試しください。", ToastKind.Critical, TimeSpan.FromSeconds(6));
         }
+    }
+
+    /// <summary>
+    /// まとめて消す（ピン留めは残す）。消したあと、知らせの「元に戻す」で戻せる。
+    /// Windows の Win+V の「すべてクリア」と同じく、確かめずにすぐ消す（そのかわり戻せる）。
+    /// </summary>
+    private void Clear(ClearScope scope)
+    {
+        IReadOnlyList<Clip> removed;
+        try
+        {
+            removed = store.DeleteMany(scope);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn("まとめて消せませんでした。", ex);
+            ShowToast("消せませんでした。", ToastKind.Critical, TimeSpan.FromSeconds(6));
+            return;
+        }
+
+        if (removed.Count == 0)
+        {
+            ShowToast(scope == ClearScope.Screenshots ? "消せるスクリーンショットはありません。" : "消せるものはありません。", ToastKind.Info, TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        Log.Info($"まとめて消しました: {scope}、{removed.Count} 件");
+        var message = scope == ClearScope.Screenshots
+            ? $"ピン留め以外のスクリーンショットを {removed.Count} 件消しました。"
+            : $"ピン留め以外の {removed.Count} 件を消しました。";
+        ShowToast(message, ToastKind.Info, TimeSpan.FromSeconds(8), "元に戻す", () =>
+        {
+            try
+            {
+                var restored = store.RestoreMany(removed);
+                Log.Info($"まとめて消したものを戻しました: {restored} / {removed.Count} 件");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn("元に戻せませんでした。", ex);
+                ShowToast("元に戻せませんでした。", ToastKind.Critical, TimeSpan.FromSeconds(6));
+            }
+        });
     }
 
     private void OnDeleteRequested(ClipItem item)

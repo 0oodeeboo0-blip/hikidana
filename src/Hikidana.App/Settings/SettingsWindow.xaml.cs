@@ -7,6 +7,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Hikidana.App.Interop;
 using Hikidana.Core.Layout;
+using Hikidana.Core.Storage;
 
 namespace Hikidana.App.Settings;
 
@@ -451,6 +452,39 @@ internal partial class SettingsWindow : Window
         if (!host.SetStartWithWindows(on))
         {
             StartupSwitch.IsChecked = !on;
+        }
+    }
+
+    private void ClearScreenshots_Click(object sender, RoutedEventArgs e) => ConfirmAndClear(ClearScope.Screenshots);
+
+    private void ClearAll_Click(object sender, RoutedEventArgs e) => ConfirmAndClear(ClearScope.All);
+
+    /// <summary>何件消えるかを見せて確かめてから、まとめて消す（ピン留めは残す）。</summary>
+    private void ConfirmAndClear(ClearScope scope)
+    {
+        var count = host.CountClearable(scope);
+        if (count == 0)
+        {
+            MessageBox.Show(
+                this,
+                scope == ClearScope.Screenshots ? "消せるスクリーンショットはありません（ピン留めしたものは消しません）。" : "消せるものはありません（ピン留めしたものは消しません）。",
+                "Hikidana の設定",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var what = scope == ClearScope.Screenshots ? $"ピン留め以外のスクリーンショット {count:#,0} 件" : $"ピン留め以外の {count:#,0} 件";
+        var answer = MessageBox.Show(
+            this,
+            $"{what}を、棚から消します。\n\n消したあと少しの間は、画面の端に出る知らせの「元に戻す」で戻せます。",
+            "Hikidana の設定",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.Cancel);
+        if (answer == MessageBoxResult.OK)
+        {
+            host.Clear(scope);
         }
     }
 

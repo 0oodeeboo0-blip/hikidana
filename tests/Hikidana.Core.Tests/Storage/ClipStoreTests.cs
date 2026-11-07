@@ -167,6 +167,61 @@ public sealed class ClipStoreTests : IDisposable
     }
 
     [Fact]
+    public void ClearingScreenshotsKeepsPinnedAndOtherKindsAndCanBeUndone()
+    {
+        var store = NewStore();
+        var shots = new List<Clip>();
+        for (var i = 0; i < 3; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(10));
+            shots.Add(store.Add(new ClipDraft { Kind = ClipKind.Screenshot, Image = TestImages.Opaque(30 + i, 20), SourceApp = "SnippingTool.exe" })!);
+        }
+
+        store.SetPinned(shots[0].Id, true);
+        time.Advance(TimeSpan.FromSeconds(10));
+        var image = store.Add(new ClipDraft { Kind = ClipKind.Image, Image = TestImages.Opaque(40, 40), SourceApp = "msedge.exe" })!;
+        var text = store.Add(Text("残るテキスト"))!;
+
+        Assert.Equal(2, store.Count(ClearScope.Screenshots));
+        Assert.Equal(4, store.Count(ClearScope.All));
+        var changed = 0;
+        store.Changed += (_, _) => changed++;
+        var removed = store.DeleteMany(ClearScope.Screenshots);
+        Assert.Equal(1, changed, "まとめて 1 回だけ知らせる。");
+        Assert.SequenceEqual(new[] { shots[2].Id, shots[1].Id }, removed.Select(c => c.Id));
+        Assert.SequenceEqual(new[] { text.Id, image.Id, shots[0].Id }, store.Items.Select(c => c.Id));
+        Assert.False(Directory.Exists(Path.Combine(root, "clips", shots[1].Id)));
+        Assert.Equal(0, store.Count(ClearScope.Screenshots));
+        Assert.Equal(0, store.DeleteMany(ClearScope.Screenshots).Count);
+        Assert.Equal(1, changed, "消すものが無ければ知らせない。");
+
+        // 元に戻すと、中身ごと元の並びに戻る
+        Assert.Equal(2, store.RestoreMany(removed));
+        Assert.Equal(2, changed);
+        Assert.SequenceEqual(new[] { text.Id, image.Id, shots[2].Id, shots[1].Id, shots[0].Id }, store.Items.Select(c => c.Id));
+        Assert.NotNull(store.ReadPng(store.Find(shots[1].Id)!));
+    }
+
+    [Fact]
+    public void ClearingAllKeepsOnlyPinned()
+    {
+        var store = NewStore();
+        var pinned = store.Add(Text("ピン留め"))!;
+        store.SetPinned(pinned.Id, true);
+        store.Add(Text("A"));
+        store.Add(new ClipDraft { Kind = ClipKind.Screenshot, Image = TestImages.Opaque(20, 20) });
+        store.Add(new ClipDraft { Kind = ClipKind.Files, Files = [@"C:\a.txt"] });
+        var removed = store.DeleteMany(ClearScope.All);
+        Assert.Equal(3, removed.Count);
+        Assert.SequenceEqual(new[] { pinned.Id }, store.Items.Select(c => c.Id));
+
+        // 読み直しても同じ（保存されている）。ごみ箱は起動したときに空になるので、そのあとは戻せない
+        var again = NewStore();
+        Assert.SequenceEqual(new[] { pinned.Id }, again.Items.Select(c => c.Id));
+        Assert.Equal(1, again.RestoreMany(removed), "ファイルの種類は中身のフォルダーを持たないので戻る。");
+    }
+
+    [Fact]
     public void OldItemsExpire()
     {
         var store = NewStore(new ClipStoreOptions { MaxAge = TimeSpan.FromDays(7) });

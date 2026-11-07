@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Data;
 using System.Windows.Media;
 using Hikidana.App.Interop;
+using Hikidana.Core.Storage;
 using Hikidana.Win32;
 
 namespace Hikidana.App.Shelf;
@@ -76,6 +77,9 @@ public partial class ShelfWindow : Window
 
     /// <summary>「…」の「設定」。</summary>
     public event Action? SettingsRequested;
+
+    /// <summary>「…」の「ピン留め以外の…を消す」。</summary>
+    public event Action<ClearScope>? ClearRequested;
 
     /// <summary>「マウスを乗せるだけで開く」を入り切りした。</summary>
     public event Action<bool>? OpenOnHoverChanged;
@@ -596,4 +600,19 @@ public partial class ShelfWindow : Window
     private void Quit_Click(object sender, RoutedEventArgs e) => QuitRequested?.Invoke();
 
     private void Settings_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
+
+    /// <summary>「…」を開いたとき、まとめて消すと何件消えるかを書いておく（無ければ押せなくする）。</summary>
+    private void MoreMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        var screenshots = Items.Count(i => ClearScope.Screenshots.Matches(i.Clip));
+        var all = Items.Count(i => ClearScope.All.Matches(i.Clip));
+        ClearScreenshotsItem.Header = $"ピン留め以外のスクリーンショットを消す（{screenshots} 件）";
+        ClearScreenshotsItem.IsEnabled = screenshots > 0;
+        ClearAllItem.Header = $"ピン留め以外をすべて消す（{all} 件）";
+        ClearAllItem.IsEnabled = all > 0;
+    }
+
+    private void ClearScreenshots_Click(object sender, RoutedEventArgs e) => ClearRequested?.Invoke(ClearScope.Screenshots);
+
+    private void ClearAll_Click(object sender, RoutedEventArgs e) => ClearRequested?.Invoke(ClearScope.All);
 }

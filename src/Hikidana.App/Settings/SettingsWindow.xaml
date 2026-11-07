@@ -278,6 +278,21 @@
         </DockPanel>
       </Border>
 
+      <Border Style="{StaticResource SettingCard}">
+        <DockPanel>
+          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE74D;" VerticalAlignment="Top" Margin="2,1,18,0" />
+          <StackPanel>
+            <TextBlock Style="{StaticResource SettingName}" Text="棚を片付ける" />
+            <TextBlock Style="{StaticResource SettingHint}" Text="ピン留めしたものは残ります。消したあと少しの間は、知らせの「元に戻す」で戻せます。" />
+            <WrapPanel Margin="0,10,0,0">
+              <Button x:Name="ClearScreenshotsButton" Content="スクリーンショットを消す" Margin="0,0,8,4" Padding="12,5"
+                      Click="ClearScreenshots_Click" />
+              <Button x:Name="ClearAllButton" Content="すべて消す" Margin="0,0,8,4" Padding="12,5" Click="ClearAll_Click" />
+            </WrapPanel>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
       <!-- 起動 -->
       <TextBlock Style="{StaticResource SectionTitle}" Text="起動" />
       <Border Style="{StaticResource SettingCard}">

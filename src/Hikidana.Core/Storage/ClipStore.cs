@@ -268,23 +268,7 @@ public sealed class ClipStore
             }
 
             items.Remove(clip);
-            var dir = Path.Combine(ClipsDir, clip.Id);
-            if (Directory.Exists(dir))
-            {
-                var trash = Path.Combine(Root, TrashFolder);
-                Directory.CreateDirectory(trash);
-                var target = Path.Combine(trash, clip.Id);
-                TryDeleteDirectory(target);
-                try
-                {
-                    Directory.Move(dir, target);
-                }
-                catch (IOException)
-                {
-                    TryDeleteDirectory(dir);
-                }
-            }
-
+            MoveToTrash(clip);
             SaveIndex();
         }
 
@@ -292,36 +276,99 @@ public sealed class ClipStore
         return clip;
     }
 
-    /// <summary>消したものを戻す。中身がもう無ければ false。</summary>
-    public bool Restore(Clip clip)
+    /// <summary>
+    /// まとめて消す（<paramref name="scope"/> に当てはまるもの。ピン留めは消さない）。
+    /// 消したものを返す（<see cref="RestoreMany"/> に渡すと元に戻せる。次に起動するまで）。
+    /// </summary>
+    public IReadOnlyList<Clip> DeleteMany(ClearScope scope)
     {
+        List<Clip> removed;
         lock (gate)
         {
-            if (items.Any(c => c.Id == clip.Id))
+            removed = items.Where(c => scope.Matches(c)).ToList();
+            if (removed.Count == 0)
             {
-                return true;
+                return [];
             }
 
-            var trashed = Path.Combine(Root, TrashFolder, clip.Id);
-            var dir = Path.Combine(ClipsDir, clip.Id);
-            if (clip.Kind != ClipKind.Files)
+            foreach (var clip in removed)
             {
-                if (!Directory.Exists(trashed))
-                {
-                    return false;
-                }
-
-                Directory.Move(trashed, dir);
+                items.Remove(clip);
+                MoveToTrash(clip);
             }
 
-            items.Add(clip);
-            Sort();
-            EnforceLimits();
             SaveIndex();
         }
 
         RaiseChanged();
-        return true;
+        return removed;
+    }
+
+    /// <summary>まとめて消すと消えるものの数（<see cref="DeleteMany"/> と同じ数え方）。</summary>
+    public int Count(ClearScope scope)
+    {
+        lock (gate)
+        {
+            return items.Count(c => scope.Matches(c));
+        }
+    }
+
+    /// <summary>消したものを戻す。中身がもう無ければ false。</summary>
+    public bool Restore(Clip clip) => RestoreMany([clip]) == 1;
+
+    /// <summary>消したものを元に戻す（ごみ箱のフォルダーから戻す）。戻せた数（もう戻っていたものも数える）を返す。</summary>
+    public int RestoreMany(IEnumerable<Clip> clips)
+    {
+        ArgumentNullException.ThrowIfNull(clips);
+        var restored = 0;
+        var changed = false;
+        lock (gate)
+        {
+            foreach (var clip in clips)
+            {
+                if (items.Any(c => c.Id == clip.Id))
+                {
+                    restored++;
+                    continue;
+                }
+
+                if (clip.Kind != ClipKind.Files)
+                {
+                    var trashed = Path.Combine(Root, TrashFolder, clip.Id);
+                    if (!Directory.Exists(trashed))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        Directory.Move(trashed, Path.Combine(ClipsDir, clip.Id));
+                    }
+                    catch (IOException)
+                    {
+                        continue;
+                    }
+                }
+
+                items.Add(clip);
+                restored++;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                Sort();
+                EnforceLimits();
+                SaveIndex();
+            }
+        }
+
+        if (changed)
+        {
+            RaiseChanged();
+        }
+
+        return restored;
     }
 
     /// <summary>全部消す（ピン留めを残すかを選べる）。</summary>
@@ -571,6 +618,29 @@ public sealed class ClipStore
     }
 
     private void Sort() => items = items.OrderByDescending(c => c.UpdatedAt).ToList();
+
+    /// <summary>中身のフォルダーを、ごみ箱のフォルダーへ動かす（元に戻せるように。ごみ箱は次に起動したときに空にする）。</summary>
+    private void MoveToTrash(Clip clip)
+    {
+        var dir = Path.Combine(ClipsDir, clip.Id);
+        if (!Directory.Exists(dir))
+        {
+            return;
+        }
+
+        var trash = Path.Combine(Root, TrashFolder);
+        Directory.CreateDirectory(trash);
+        var target = Path.Combine(trash, clip.Id);
+        TryDeleteDirectory(target);
+        try
+        {
+            Directory.Move(dir, target);
+        }
+        catch (IOException)
+        {
+            TryDeleteDirectory(dir);
+        }
+    }
 
     private void SaveIndex()
     {

@@ -1,6 +1,7 @@
 using Hikidana.App.Interop;
 using Hikidana.Core.Layout;
 using Hikidana.Core.Settings;
+using Hikidana.Core.Storage;
 
 namespace Hikidana.App.Settings;
 
@@ -54,6 +55,12 @@ internal interface ISettingsHost
     void SetMoveToTop(bool on);
 
     void SetPaused(bool paused);
+
+    /// <summary>まとめて消すと消えるものの数（ピン留めは数えない）。</summary>
+    int CountClearable(ClearScope scope);
+
+    /// <summary>まとめて消す（ピン留めは残す）。知らせの「元に戻す」で戻せる。</summary>
+    void Clear(ClearScope scope);
 
     /// <summary>サインインしたら起動するかを変える。変えられなければ false（知らせも出す）。</summary>
     bool SetStartWithWindows(bool on);

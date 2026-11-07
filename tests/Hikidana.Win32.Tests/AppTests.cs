@@ -145,6 +145,55 @@ public sealed class AppTests
     }
 
     [Fact(WindowsOnly = true)]
+    public async Task ClearingScreenshotsFromTheMenuKeepsTheRestAndCanBeUndone()
+    {
+        var page = await ChromiumPage.SharedAsync();
+        using var app = await RunningApp.StartAsync();
+        var shelf = await app.OpenShelfAsync(page);
+        var before = DemoClips();
+        Assert.Equal(1, before.Count(c => c.Kind == "Screenshot" && !c.Pinned), string.Join(", ", before));
+
+        // 「…」→「ピン留め以外のスクリーンショットを消す（1 件）」
+        if (await Automation.WaitForCenterAsync(shelf, "MoreButton", TimeSpan.FromSeconds(3)) is not { } more)
+        {
+            throw new AssertionException("棚に「…」のボタンが見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(more.X, more.Y, hoverMilliseconds: 300);
+        var menu = await Desktop.WaitForWindowAsync(w => Desktop.ProcessIdOf(w) == (uint)app.ProcessId && Desktop.ClassOf(w).StartsWith("HwndWrapper", StringComparison.Ordinal) && w != shelf && Desktop.TitleOf(w).Length == 0, TimeSpan.FromSeconds(2));
+        Assert.NotEqual((nint)0, menu, "「…」のメニューが出ませんでした。");
+        if (await Automation.WaitForCenterAsync(menu, "ClearScreenshotsItem", TimeSpan.FromSeconds(3)) is not { } item)
+        {
+            throw new AssertionException("「…」のメニューに「ピン留め以外のスクリーンショットを消す」が見つかりません。");
+        }
+
+        await Task.Delay(300);
+        ScreenCapture.Save("app-clear-menu");
+        await TestMouse.ClickAsync(item.X, item.Y, hoverMilliseconds: 300);
+
+        // スクリーンショットだけが消えて、ほかは残る。知らせが出る
+        var cleared = await Desktop.WaitUntilAsync(() => DemoClips() is { Count: > 0 } now && now.All(c => c.Kind != "Screenshot"), TimeSpan.FromSeconds(3));
+        var after = DemoClips();
+        Assert.True(cleared, $"スクリーンショットが消えていません: {string.Join(", ", after)}");
+        Assert.Equal(before.Count - 1, after.Count, string.Join(", ", after));
+        var toast = await app.WaitForWindowAsync("Hikidana の知らせ", TimeSpan.FromSeconds(3));
+        Assert.NotEqual((nint)0, toast, "知らせが出ていません。");
+        await Task.Delay(500);
+        ScreenCapture.Save("app-clear-screenshots");
+
+        // 知らせの「元に戻す」で戻る
+        if (await Automation.WaitForCenterAsync(toast, "ActionButton", TimeSpan.FromSeconds(3)) is not { } undo)
+        {
+            throw new AssertionException("知らせに「元に戻す」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(undo.X, undo.Y, hoverMilliseconds: 300);
+        var restored = await Desktop.WaitUntilAsync(() => DemoClips().Count(c => c.Kind == "Screenshot") == 1, TimeSpan.FromSeconds(3));
+        Assert.True(restored, $"元に戻せませんでした: {string.Join(", ", DemoClips())}");
+        Assert.Equal(before.Count, DemoClips().Count);
+    }
+
+    [Fact(WindowsOnly = true)]
     public async Task SettingsMoveTheHandleToTheLeftEdgeAndRememberIt()
     {
         using var app = await RunningApp.StartAsync("--settings");
@@ -243,6 +292,25 @@ public sealed class AppTests
         await Task.Delay(600);
         ScreenCapture.Save("app-shelf-after-dark-switch");
         Assert.False(app.HasExited, "色を変えたあと、アプリが終了しました。");
+    }
+
+    /// <summary>見本の棚にしまってあるものの種類とピン留め（索引のファイルを直接読む）。読めなければ空。</summary>
+    private static IReadOnlyList<(string Kind, bool Pinned)> DemoClips()
+    {
+        try
+        {
+            using var stream = new FileStream(Path.Combine(DemoRoot, "clips.json"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var document = JsonDocument.Parse(stream);
+            return document.RootElement.GetProperty("Items").EnumerateArray()
+                .Select(item => (
+                    item.TryGetProperty("Kind", out var kind) ? kind.ToString() : string.Empty,
+                    item.TryGetProperty("Pinned", out var pinned) && pinned.ValueKind == JsonValueKind.True))
+                .ToList();
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return [];
+        }
     }
 
     /// <summary>見本の設定のファイルの、文字の値（例: theme）。読めなければ null。</summary>

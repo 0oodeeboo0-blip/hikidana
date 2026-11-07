@@ -6,6 +6,7 @@ using Hikidana.App.Settings;
 using Hikidana.Core.Diagnostics;
 using Hikidana.Core.Layout;
 using Hikidana.Core.Settings;
+using Hikidana.Core.Storage;
 using Hikidana.Win32;
 
 namespace Hikidana.App.Shelf;
@@ -185,6 +186,10 @@ internal sealed partial class ShelfController : ISettingsHost
     }
 
     void ISettingsHost.SetPaused(bool paused) => SetPaused(paused);
+
+    int ISettingsHost.CountClearable(ClearScope scope) => store.Count(scope);
+
+    void ISettingsHost.Clear(ClearScope scope) => Clear(scope);
 
     bool ISettingsHost.SetStartWithWindows(bool on)
     {

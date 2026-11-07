@@ -189,6 +189,51 @@ internal sealed partial class ShelfController : ISettingsHost
 
     int ISettingsHost.CountClearable(ClearScope scope) => store.Count(scope);
 
+    bool ISettingsHost.HotkeyWorks => hotkeyWorks;
+
+    bool ISettingsHost.SetHotkey(string setting)
+    {
+        settings.OpenHotkey = setting;
+        settings.Normalize();
+        SaveSettings();
+        var works = ApplyHotkey();
+        RaiseSettingsChanged();
+        return works;
+    }
+
+    int ISettingsHost.CountAutoDelete(int days, string scope) =>
+        days <= 0 ? 0 : store.CountOlderThan(TimeSpan.FromDays(days), scope == "all" ? ClearScope.All : ClearScope.Screenshots);
+
+    void ISettingsHost.SetAutoDelete(int days, string scope)
+    {
+        settings.AutoDeleteDays = days;
+        settings.AutoDeleteScope = scope;
+        settings.Normalize();
+        int removed;
+        try
+        {
+            removed = store.SetAutoDelete(settings.AutoDeleteAge(), settings.AutoDeleteClearScope());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn("古いものを消している途中で止まりました。", ex);
+            removed = 0;
+        }
+
+        SaveSettings();
+        Log.Info(settings.AutoDeleteDays > 0
+            ? $"{settings.AutoDeleteDays} 日たった {settings.AutoDeleteScope} を自動で消すようにしました（いま消したもの {removed} 件）。"
+            : "古いものを自動で消さないようにしました。");
+        RaiseSettingsChanged();
+    }
+
+    void ISettingsHost.SetSignalOnCapture(bool on)
+    {
+        settings.SignalOnCapture = on;
+        SaveSettings();
+        RaiseSettingsChanged();
+    }
+
     void ISettingsHost.Clear(ClearScope scope) => Clear(scope);
 
     bool ISettingsHost.SetStartWithWindows(bool on)

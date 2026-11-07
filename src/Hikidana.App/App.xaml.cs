@@ -112,7 +112,10 @@ public partial class App : Application
         Palette.Watch(this);
 
         var clock = new DemoClock();
-        var store = new ClipStore(dataRoot, new ClipStoreOptions { MaxItems = settings.MaxItems }, clock);
+        var store = new ClipStore(
+            dataRoot,
+            new ClipStoreOptions { MaxItems = settings.MaxItems, MaxAge = settings.AutoDeleteAge(), MaxAgeScope = settings.AutoDeleteClearScope() },
+            clock);
         store.Load();
         if (options.Demo && store.Items.Count == 0)
         {
@@ -123,6 +126,7 @@ public partial class App : Application
         watcher.Start();
         recorder = new ClipboardRecorder(store, watcher);
         recorder.Failed += ex => Log.Error("コピーしたものを、しまえませんでした。", ex);
+        recorder.Recorded += clip => controller?.NotifyRecorded(clip);
         var paste = new PasteService(store, watcher) { MoveToTop = settings.MoveToTopOnPaste };
 
         // サインインしたら起動する設定（見本のときは、本物の設定に触れない）

@@ -26,6 +26,42 @@ public sealed class SettingsTests : IDisposable
         Assert.True(settings.CloseAfterPaste);
         Assert.False(settings.OpenOnHover);
         Assert.Equal("system", settings.Theme);
+        Assert.Equal("win+alt+v", settings.OpenHotkey);
+        Assert.Equal(0, settings.AutoDeleteDays);
+        Assert.Null(settings.AutoDeleteAge());
+        Assert.Equal(Hikidana.Core.Storage.ClearScope.Screenshots, settings.AutoDeleteClearScope());
+        Assert.True(settings.SignalOnCapture);
+    }
+
+    [Fact]
+    public void NewSettingsSurviveAndOldFilesGetDefaults()
+    {
+        var path = Path.Combine(dir, "settings.json");
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { OpenHotkey = "", AutoDeleteDays = 7, AutoDeleteScope = "all", SignalOnCapture = false });
+        var loaded = store.Load();
+        Assert.Equal(string.Empty, loaded.OpenHotkey, "空は「使わない」のまま。");
+        Assert.Equal(TimeSpan.FromDays(7), loaded.AutoDeleteAge());
+        Assert.Equal(Hikidana.Core.Storage.ClearScope.All, loaded.AutoDeleteClearScope());
+        Assert.False(loaded.SignalOnCapture);
+
+        // 前の版の設定のファイル（新しい項目が無い）は、初めの値になる
+        File.WriteAllText(path, "{ \"version\": 1, \"edge\": \"left\" }");
+        var old = store.Load();
+        Assert.Equal("win+alt+v", old.OpenHotkey);
+        Assert.Equal(0, old.AutoDeleteDays);
+        Assert.True(old.SignalOnCapture);
+    }
+
+    [Fact]
+    public void OddHotkeysAndDaysAreFixed()
+    {
+        var settings = new AppSettings { OpenHotkey = "Alt + Shift + V", AutoDeleteDays = 9999, AutoDeleteScope = "everything" }.Normalize();
+        Assert.Equal("alt+shift+v", settings.OpenHotkey);
+        Assert.Equal(365, settings.AutoDeleteDays);
+        Assert.Equal("screenshots", settings.AutoDeleteScope);
+        Assert.Equal("win+alt+v", new AppSettings { OpenHotkey = "shift+v" }.Normalize().OpenHotkey, "使えない組み合わせは、初めの値に戻す。");
+        Assert.Equal(string.Empty, new AppSettings { OpenHotkey = "none" }.Normalize().OpenHotkey);
     }
 
     [Fact]

@@ -20,6 +20,9 @@ internal partial class SettingsWindow : Window
     /// <summary>しまっておく数の選び方（設定のファイルで、ほかの数にしてあれば足す）。</summary>
     private static readonly int[] MaxItemsChoices = [100, 300, 500, 1000, 2000];
 
+    /// <summary>ショートカットの選び方（設定の書き方。空は「使わない」）。</summary>
+    private static readonly string[] HotkeyChoices = ["win+alt+v", "ctrl+alt+v", "alt+shift+v", "ctrl+alt+h", ""];
+
     /// <summary>画面の図のいちばん大きな幅と高さ（DIP）。</summary>
     private const double DiagramMaxWidth = 240;
     private const double DiagramMaxHeight = 150;
@@ -120,6 +123,22 @@ internal partial class SettingsWindow : Window
             MoveToTopSwitch.IsChecked = settings.MoveToTopOnPaste;
             PausedSwitch.IsChecked = settings.Paused;
             StartupSwitch.IsChecked = host.StartWithWindows;
+            SignalSwitch.IsChecked = settings.SignalOnCapture;
+
+            HotkeyBox.Items.Clear();
+            foreach (var choice in HotkeyChoices.Contains(settings.OpenHotkey) ? HotkeyChoices : HotkeyChoices.Prepend(settings.OpenHotkey))
+            {
+                var label = choice.Length == 0 ? "使わない" : Hikidana.Core.Settings.Hotkey.Parse(choice)?.ToString() ?? choice;
+                var item = new ComboBoxItem { Content = label, Tag = choice };
+                HotkeyBox.Items.Add(item);
+                if (choice == settings.OpenHotkey)
+                {
+                    HotkeyBox.SelectedItem = item;
+                }
+            }
+
+            HotkeyWarning.Visibility = host.HotkeyWorks ? Visibility.Collapsed : Visibility.Visible;
+            SelectAutoDelete(settings.AutoDeleteDays, settings.AutoDeleteScope);
         }
         finally
         {
@@ -128,6 +147,34 @@ internal partial class SettingsWindow : Window
 
         DrawDiagram();
     }
+
+    /// <summary>自動で消す設定を、一覧で選んだ状態にする（一覧に無い日数なら足す）。</summary>
+    private void SelectAutoDelete(int days, string scope)
+    {
+        var found = false;
+        foreach (ComboBoxItem item in AutoDeleteDaysBox.Items)
+        {
+            if (item.Tag is string tag && int.TryParse(tag, out var value) && value == days)
+            {
+                AutoDeleteDaysBox.SelectedItem = item;
+                found = true;
+            }
+        }
+
+        if (!found)
+        {
+            var item = new ComboBoxItem { Content = $"{days} 日たったら", Tag = days.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+            AutoDeleteDaysBox.Items.Add(item);
+            AutoDeleteDaysBox.SelectedItem = item;
+        }
+
+        AutoDeleteScopeBox.SelectedIndex = scope == "all" ? 1 : 0;
+        AutoDeleteScopeBox.IsEnabled = days > 0;
+    }
+
+    private (int Days, string Scope) ChosenAutoDelete() => (
+        AutoDeleteDaysBox.SelectedItem is ComboBoxItem { Tag: string tag } && int.TryParse(tag, out var days) ? days : 0,
+        AutoDeleteScopeBox.SelectedItem is ComboBoxItem { Tag: string scope } ? scope : "screenshots");
 
     private void SelectMaxItems(int count)
     {
@@ -443,6 +490,65 @@ internal partial class SettingsWindow : Window
     }
 
     private void MoveToTop_Click(object sender, RoutedEventArgs e) => host.SetMoveToTop(MoveToTopSwitch.IsChecked == true);
+
+    private void Signal_Click(object sender, RoutedEventArgs e) => host.SetSignalOnCapture(SignalSwitch.IsChecked == true);
+
+    private void Hotkey_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (loading || HotkeyBox.SelectedItem is not ComboBoxItem { Tag: string choice } || choice == host.Settings.OpenHotkey)
+        {
+            return;
+        }
+
+        var works = host.SetHotkey(choice);
+        HotkeyWarning.Visibility = works ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void AutoDelete_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (loading)
+        {
+            return;
+        }
+
+        var (days, scope) = ChosenAutoDelete();
+        var settings = host.Settings;
+        AutoDeleteScopeBox.IsEnabled = days > 0;
+        if (days == settings.AutoDeleteDays && (days == 0 || scope == settings.AutoDeleteScope))
+        {
+            return;
+        }
+
+        // もう日数を過ぎたものが、すぐ消えるときは確かめる
+        var lost = host.CountAutoDelete(days, scope);
+        if (lost > 0)
+        {
+            var what = scope == "all" ? "もの（ピン留め以外）" : "スクリーンショット";
+            var answer = MessageBox.Show(
+                this,
+                $"最後に使ってから {days} 日より前の{what} {lost:#,0} 件が、いますぐ棚から消えます。\n\nよろしいですか？",
+                "Hikidana の設定",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning,
+                MessageBoxResult.Cancel);
+            if (answer != MessageBoxResult.OK)
+            {
+                loading = true;
+                try
+                {
+                    SelectAutoDelete(settings.AutoDeleteDays, settings.AutoDeleteScope);
+                }
+                finally
+                {
+                    loading = false;
+                }
+
+                return;
+            }
+        }
+
+        host.SetAutoDelete(days, scope);
+    }
 
     private void Paused_Click(object sender, RoutedEventArgs e) => host.SetPaused(PausedSwitch.IsChecked == true);
 

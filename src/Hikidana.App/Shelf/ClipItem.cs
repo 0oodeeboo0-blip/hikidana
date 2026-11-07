@@ -15,6 +15,7 @@ public sealed class ClipItem : INotifyPropertyChanged
     private ImageSource? thumbnail;
     private string time = string.Empty;
     private bool selected;
+    private int pickOrder;
 
     public ClipItem(Clip clip, DateTimeOffset now)
     {
@@ -22,18 +23,7 @@ public sealed class ClipItem : INotifyPropertyChanged
         Version = (clip.UpdatedAt, clip.Pinned, clip.Kind);
         KindName = ClipLabels.KindName(clip.Kind);
         AppName = ClipLabels.AppName(clip.SourceApp);
-        Glyph = clip.Kind switch
-        {
-            ClipKind.Image => "\uE8B9",
-            ClipKind.Screenshot => "\uE722",
-            ClipKind.Link => "\uE71B",
-            ClipKind.Code => "\uE943",
-            ClipKind.Files => "\uE8B7",
-            ClipKind.Color => "\uE790",
-            ClipKind.Table => "\uE8A9",
-            ClipKind.RichText => "\uE70F",
-            _ => "\uE8C1",
-        };
+        Glyph = GlyphFor(clip.Kind);
 
         switch (clip.Kind)
         {
@@ -105,6 +95,38 @@ public sealed class ClipItem : INotifyPropertyChanged
 
     /// <summary>絞り込みの分け方。</summary>
     public ClipCategory Category { get; }
+
+    /// <summary>種類の記号（Segoe Fluent Icons）。</summary>
+    public static string GlyphFor(ClipKind kind) => kind switch
+    {
+        ClipKind.Image => "\uE8B9",
+        ClipKind.Screenshot => "\uE722",
+        ClipKind.Link => "\uE71B",
+        ClipKind.Code => "\uE943",
+        ClipKind.Files => "\uE8B7",
+        ClipKind.Color => "\uE790",
+        ClipKind.Table => "\uE8A9",
+        ClipKind.RichText => "\uE70F",
+        _ => "\uE8C1",
+    };
+
+    /// <summary>まとめて貼るために選んだ順番（1 から）。選んでいなければ 0。</summary>
+    public int PickOrder
+    {
+        get => pickOrder;
+        set
+        {
+            if (pickOrder != value)
+            {
+                pickOrder = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsPicked));
+            }
+        }
+    }
+
+    /// <summary>まとめて貼るために選んでいる。</summary>
+    public bool IsPicked => pickOrder > 0;
 
     /// <summary>キーボードで選んでいる（検索中の ↑↓）。</summary>
     public bool IsSelected

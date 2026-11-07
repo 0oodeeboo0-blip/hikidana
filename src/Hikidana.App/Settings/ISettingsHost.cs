@@ -59,6 +59,21 @@ internal interface ISettingsHost
     /// <summary>まとめて消すと消えるものの数（ピン留めは数えない）。</summary>
     int CountClearable(ClearScope scope);
 
+    /// <summary>いまのショートカットが使えている（ほかのアプリと重なっていない）。</summary>
+    bool HotkeyWorks { get; }
+
+    /// <summary>ショートカットを変える（設定の書き方。空なら使わない）。ほかのアプリが使っていて使えなければ false。</summary>
+    bool SetHotkey(string setting);
+
+    /// <summary>自動で消す設定を <paramref name="days"/> 日・<paramref name="scope"/>（screenshots・all）にしたら、すぐ消えるものの数。</summary>
+    int CountAutoDelete(int days, string scope);
+
+    /// <summary>自動で消す設定を変える（0 日なら消さない）。もう期間を過ぎたものは、すぐ消える。</summary>
+    void SetAutoDelete(int days, string scope);
+
+    /// <summary>棚に入ったら取っ手で知らせるかを変える。</summary>
+    void SetSignalOnCapture(bool on);
+
     /// <summary>まとめて消す（ピン留めは残す）。知らせの「元に戻す」で戻せる。</summary>
     void Clear(ClearScope scope);
 

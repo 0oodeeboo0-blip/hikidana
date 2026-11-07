@@ -212,6 +212,22 @@
 
       <Border Style="{StaticResource SettingCard}">
         <DockPanel>
+          <ComboBox x:Name="HotkeyBox" DockPanel.Dock="Right" MinWidth="180" VerticalAlignment="Center"
+                    AutomationProperties.Name="ショートカットキー" SelectionChanged="Hotkey_SelectionChanged" />
+          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE765;" />
+          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+            <TextBlock Style="{StaticResource SettingName}" Text="ショートカットキー" />
+            <TextBlock Style="{StaticResource SettingHint}"
+                       Text="どのアプリを使っていても、このキーで棚が開きます。文字で探して ↑↓ で選び、Enter で貼り付けます。" />
+            <TextBlock x:Name="HotkeyWarning" Style="{StaticResource SettingHint}" Visibility="Collapsed"
+                       Foreground="{DynamicResource Hkd.Critical}"
+                       Text="このキーは、ほかのアプリが使っているため使えません。別のキーを選んでください。" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <Border Style="{StaticResource SettingCard}">
+        <DockPanel>
           <CheckBox x:Name="CloseAfterPasteSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
                     AutomationProperties.Name="貼り付けたら棚を閉じる" Click="CloseAfterPaste_Click" />
           <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE77F;" />
@@ -240,6 +256,18 @@
         </DockPanel>
       </Border>
 
+      <Border Style="{StaticResource SettingCard}">
+        <DockPanel>
+          <CheckBox x:Name="SignalSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                    AutomationProperties.Name="棚に入ったら取っ手で知らせる" Click="Signal_Click" />
+          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE722;" />
+          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+            <TextBlock Style="{StaticResource SettingName}" Text="棚に入ったら取っ手で知らせる" />
+            <TextBlock Style="{StaticResource SettingHint}" Text="スクリーンショットやコピーしたものが棚に入ると、取っ手から印が少し出ます。" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
       <!-- 記録 -->
       <TextBlock Style="{StaticResource SectionTitle}" Text="記録" />
       <Border Style="{StaticResource SettingCard}">
@@ -250,6 +278,32 @@
           <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
             <TextBlock Style="{StaticResource SettingName}" Text="しまっておく数" />
             <TextBlock Style="{StaticResource SettingHint}" Text="これより多くなると、古いものから消えます。ピン留めしたものは数に入らず、消えません。" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <Border Style="{StaticResource SettingCard}">
+        <DockPanel>
+          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE81C;" VerticalAlignment="Top" Margin="2,1,18,0" />
+          <StackPanel>
+            <TextBlock Style="{StaticResource SettingName}" Text="古いものを自動で消す" />
+            <TextBlock Style="{StaticResource SettingHint}" Text="最後に使ってから日数がたったものを消します。ピン留めしたものは消えません。" />
+            <WrapPanel Margin="0,10,0,0">
+              <ComboBox x:Name="AutoDeleteDaysBox" MinWidth="150" Margin="0,0,8,4" AutomationProperties.Name="自動で消すまでの日数"
+                        SelectionChanged="AutoDelete_SelectionChanged">
+                <ComboBoxItem Content="消さない" Tag="0" />
+                <ComboBoxItem Content="1 日たったら" Tag="1" />
+                <ComboBoxItem Content="3 日たったら" Tag="3" />
+                <ComboBoxItem Content="7 日たったら" Tag="7" />
+                <ComboBoxItem Content="14 日たったら" Tag="14" />
+                <ComboBoxItem Content="30 日たったら" Tag="30" />
+              </ComboBox>
+              <ComboBox x:Name="AutoDeleteScopeBox" MinWidth="220" Margin="0,0,8,4" AutomationProperties.Name="自動で消すもの"
+                        SelectionChanged="AutoDelete_SelectionChanged">
+                <ComboBoxItem Content="スクリーンショットを消す" Tag="screenshots" />
+                <ComboBoxItem Content="ピン留め以外をすべて消す" Tag="all" />
+              </ComboBox>
+            </WrapPanel>
           </StackPanel>
         </DockPanel>
       </Border>

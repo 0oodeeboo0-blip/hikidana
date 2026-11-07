@@ -16,8 +16,11 @@ public sealed class ClipStoreOptions
     /// <summary>しまっておく数の上限（ピン留めは数えない）。</summary>
     public int MaxItems { get; set; } = 300;
 
-    /// <summary>しまっておく期間の上限（ピン留めは消さない）。null なら無期限。</summary>
+    /// <summary>しまっておく期間の上限（最後に使ってからの時間。ピン留めは消さない）。null なら無期限。</summary>
     public TimeSpan? MaxAge { get; set; }
+
+    /// <summary>期間の上限で消すものの範囲（スクリーンショットだけか、すべてか）。</summary>
+    public ClearScope MaxAgeScope { get; set; } = ClearScope.All;
 
     /// <summary>縮小画像の長い辺の画素の数（棚のカードは表示倍率 200% でもこれで足りる）。</summary>
     public int ThumbnailSize { get; set; } = 768;
@@ -304,13 +307,87 @@ public sealed class ClipStore
         return removed;
     }
 
-    /// <summary>まとめて消すと消えるものの数（<see cref="DeleteMany"/> と同じ数え方）。</summary>
+    /// <summary>まとめて消すと消えるものの数（<see cref="DeleteMany(ClearScope)"/> と同じ数え方）。</summary>
     public int Count(ClearScope scope)
     {
         lock (gate)
         {
             return items.Count(c => scope.Matches(c));
         }
+    }
+
+    /// <summary>選んだものをまとめて消す（ピン留めでも消す）。消したもの（<see cref="RestoreMany"/> で戻せる）を返す。</summary>
+    public IReadOnlyList<Clip> DeleteMany(IEnumerable<string> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var wanted = ids.ToHashSet(StringComparer.Ordinal);
+        List<Clip> removed;
+        lock (gate)
+        {
+            removed = items.Where(c => wanted.Contains(c.Id)).ToList();
+            if (removed.Count == 0)
+            {
+                return [];
+            }
+
+            foreach (var clip in removed)
+            {
+                items.Remove(clip);
+                MoveToTrash(clip);
+            }
+
+            SaveIndex();
+        }
+
+        RaiseChanged();
+        return removed;
+    }
+
+    /// <summary>
+    /// 自動で消す期間を変える（null なら消さない）。もう期間を過ぎているものは、すぐ消す。消した数を返す。
+    /// </summary>
+    public int SetAutoDelete(TimeSpan? maxAge, ClearScope scope)
+    {
+        lock (gate)
+        {
+            Options.MaxAge = maxAge;
+            Options.MaxAgeScope = scope;
+        }
+
+        return Prune();
+    }
+
+    /// <summary>自動で消す期間を <paramref name="maxAge"/> にしたら、すぐ消えるものの数。</summary>
+    public int CountOlderThan(TimeSpan maxAge, ClearScope scope)
+    {
+        var now = time.GetLocalNow();
+        lock (gate)
+        {
+            return items.Count(c => now - c.UpdatedAt > maxAge && scope.Matches(c));
+        }
+    }
+
+    /// <summary>上限（数と期間）を超えたものを消す。時間がたつと期間を過ぎるので、ときどき呼ぶ。消した数を返す。</summary>
+    public int Prune()
+    {
+        int removed;
+        lock (gate)
+        {
+            var before = items.Count;
+            EnforceLimits();
+            removed = before - items.Count;
+            if (removed > 0)
+            {
+                SaveIndex();
+            }
+        }
+
+        if (removed > 0)
+        {
+            RaiseChanged();
+        }
+
+        return removed;
     }
 
     /// <summary>消したものを戻す。中身がもう無ければ false。</summary>
@@ -607,7 +684,7 @@ public sealed class ClipStore
 
         if (Options.MaxAge is { } maxAge)
         {
-            remove.AddRange(unpinned.Where(c => now - c.UpdatedAt > maxAge));
+            remove.AddRange(unpinned.Where(c => now - c.UpdatedAt > maxAge && Options.MaxAgeScope.Matches(c)));
         }
 
         foreach (var clip in remove.Distinct())

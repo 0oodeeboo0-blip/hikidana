@@ -16,6 +16,10 @@ public partial class HandleWindow : Window
     private static readonly TimeSpan HoverDelay = TimeSpan.FromMilliseconds(300);
 
     private readonly DispatcherTimer hoverTimer = new() { Interval = HoverDelay };
+
+    /// <summary>棚に入ったことを知らせる印を、出しておく長さ。</summary>
+    private readonly DispatcherTimer flashTimer = new() { Interval = TimeSpan.FromMilliseconds(1500) };
+    private bool flashing;
     private ShelfLayout? layout;
     private string chevron = string.Empty;
     private bool dropping;
@@ -35,6 +39,67 @@ public partial class HandleWindow : Window
                 HoverDwelled?.Invoke();
             }
         };
+        flashTimer.Tick += (_, _) =>
+        {
+            flashTimer.Stop();
+            FadeFlash();
+        };
+    }
+
+    /// <summary>
+    /// 棚に何か入ったことを知らせる: つまみを少しの間アクセント色で出して、種類の印（<paramref name="glyph"/>）を見せ、引っ込める。
+    /// マウスを乗せている・押している・何かを落とそうとしているときは出さない。
+    /// </summary>
+    public void Flash(string glyph)
+    {
+        if (pressed || dropping || Root.IsMouseOver || !IsVisible)
+        {
+            return;
+        }
+
+        flashing = true;
+        Chevron.Text = glyph;
+        Tab.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "Hkd.Accent");
+        Chevron.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "Hkd.OnAccent");
+        Expand(true);
+        Tab.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));
+        flashTimer.Stop();
+        flashTimer.Start();
+    }
+
+    /// <summary>知らせの印を、ゆっくり消す。</summary>
+    private void FadeFlash()
+    {
+        if (!flashing)
+        {
+            return;
+        }
+
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(280));
+        fade.Completed += (_, _) =>
+        {
+            if (flashing)
+            {
+                EndFlash(collapse: !Root.IsMouseOver && !pressed && !dropping);
+            }
+        };
+        Tab.BeginAnimation(OpacityProperty, fade);
+    }
+
+    /// <summary>知らせの印をやめて、ふつうのつまみに戻す。</summary>
+    private void EndFlash(bool collapse)
+    {
+        flashing = false;
+        flashTimer.Stop();
+        Tab.BeginAnimation(OpacityProperty, null);
+        Tab.Opacity = 1;
+        Tab.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "Hkd.HandleTab");
+        Chevron.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "Hkd.Accent");
+        Chevron.Text = dropping ? "\uE710" : chevron;
+        if (collapse)
+        {
+            Expand(false);
+        }
     }
 
     /// <summary>マウスを乗せるだけで開く（乗せたままにすると <see cref="HoverDwelled"/>）。</summary>
@@ -129,6 +194,11 @@ public partial class HandleWindow : Window
 
     private void Root_MouseEnter(object sender, MouseEventArgs e)
     {
+        if (flashing)
+        {
+            EndFlash(collapse: false);
+        }
+
         Expand(true);
         if (OpenOnHover)
         {
@@ -151,6 +221,11 @@ public partial class HandleWindow : Window
         e.Effects = accept ? DragDropEffects.Copy : DragDropEffects.None;
         if (accept && !dropping)
         {
+            if (flashing)
+            {
+                EndFlash(collapse: false);
+            }
+
             // 「ここに置ける」と見せる
             dropping = true;
             Chevron.Text = "\uE710";

@@ -117,6 +117,123 @@ public sealed class AppTests
     }
 
     [Fact(WindowsOnly = true)]
+    public async Task ClickingOutsideOrPressingEscapeClosesTheShelf()
+    {
+        var page = await ChromiumPage.SharedAsync();
+        using var app = await RunningApp.StartAsync();
+
+        // 作業中のアプリ（Edge）をそのままクリックしても閉じる。Edge は前面のまま
+        var shelf = await app.OpenShelfAsync(page);
+        var viewport = page.Viewport();
+        await TestMouse.ClickAsync(viewport.Left + 60, viewport.Bottom - 60, hoverMilliseconds: 200);
+        var closedByClick = await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(shelf), TimeSpan.FromSeconds(3));
+        ScreenCapture.Save("app-click-outside");
+        Assert.True(closedByClick, "棚の外（作業中のアプリ）をクリックしても、棚が閉じませんでした。");
+        Assert.Equal(page.Window, TestNative.GetForegroundWindow(), $"前面: {Desktop.ForegroundDescription()}");
+
+        // もう一度開いて、Esc で閉じる
+        shelf = await app.OpenShelfAsync(page);
+        TestKeys.Down(TestKeys.VK_ESCAPE);
+        await Task.Delay(50);
+        TestKeys.Up(TestKeys.VK_ESCAPE);
+        Assert.True(await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(shelf), TimeSpan.FromSeconds(3)), "Esc を押しても、棚が閉じませんでした。");
+        Assert.Equal(page.Window, TestNative.GetForegroundWindow(), $"前面: {Desktop.ForegroundDescription()}");
+    }
+
+    [Fact(WindowsOnly = true)]
+    public async Task HotkeyOpensTheShelfForTheKeyboardAndEnterPastes()
+    {
+        var page = await ChromiumPage.SharedAsync();
+        using var app = await RunningApp.StartAsync();
+        await app.FocusAsync(page);
+
+        // Win+Alt+V で開くと、棚がキーボードを受け取る（検索の欄にいる）。キーは少し押したままにしてから離す
+        TestKeys.Down(TestKeys.VK_LWIN);
+        TestKeys.Down(TestKeys.VK_LMENU);
+        TestKeys.Down(TestKeys.VK_V);
+        TestKeys.Up(TestKeys.VK_V);
+        var shelf = await app.WaitForWindowAsync("Hikidana", TimeSpan.FromSeconds(5));
+        await Task.Delay(300);
+        TestKeys.Up(TestKeys.VK_LMENU);
+        TestKeys.Up(TestKeys.VK_LWIN);
+        Assert.NotEqual((nint)0, shelf, "Win+Alt+V を押しても、棚が開きませんでした。");
+        var focused = await Desktop.WaitUntilAsync(() => TestNative.GetForegroundWindow() == shelf, TimeSpan.FromSeconds(3));
+        await Task.Delay(300);
+        ScreenCapture.Save("app-hotkey-open");
+        Assert.True(focused, $"棚がキーボードを受け取っていません（前面: {Desktop.ForegroundDescription()}）。");
+
+        // Enter で、いちばん上（見本のスクリーンショット）を、さっきまで使っていたアプリ（Edge）に貼る
+        TestKeys.Down(TestKeys.VK_RETURN);
+        TestKeys.Up(TestKeys.VK_RETURN);
+        var paste = await page.NextPasteAsync(15000);
+        Assert.Equal("paste", paste.Kind, paste.Raw);
+        Assert.Equal(1, paste.Files.Count, paste.Raw);
+        Assert.Equal("image.png", paste.Files[0].Name, paste.Raw);
+        Assert.True(await Desktop.WaitUntilAsync(() => TestNative.GetForegroundWindow() == page.Window, TimeSpan.FromSeconds(3)), $"貼り付けたあと、Edge が前面に戻りません（前面: {Desktop.ForegroundDescription()}）。");
+    }
+
+    [Fact(WindowsOnly = true)]
+    public async Task PickingTwoCardsPastesBothInThePickedOrder()
+    {
+        var page = await ChromiumPage.SharedAsync();
+        using var app = await RunningApp.StartAsync();
+        var shelf = await app.OpenShelfAsync(page);
+        var ids = DemoClipIds();
+        Assert.True(ids.Count >= 2, "見本が足りません。");
+
+        // 2 番目（テキスト）を先に、いちばん上（スクリーンショット）をあとに、Ctrl を押しながらクリックして選ぶ
+        foreach (var id in new[] { ids[1], ids[0] })
+        {
+            if (await Automation.WaitForCenterAsync(shelf, id, TimeSpan.FromSeconds(3)) is not { } card)
+            {
+                throw new AssertionException($"カードが見つかりません（{id}）。");
+            }
+
+            TestKeys.Down(TestKeys.VK_LCONTROL);
+            await TestMouse.ClickAsync(card.X, card.Y, hoverMilliseconds: 250);
+            TestKeys.Up(TestKeys.VK_LCONTROL);
+            await Task.Delay(200);
+        }
+
+        await Task.Delay(300);
+        ScreenCapture.Save("app-pick-two");
+        Assert.Equal(page.Window, TestNative.GetForegroundWindow(), $"選んでいる間に前面が変わりました: {Desktop.ForegroundDescription()}");
+        if (await Automation.WaitForCenterAsync(shelf, "PastePickedButton", TimeSpan.FromSeconds(3)) is not { } button)
+        {
+            throw new AssertionException("「まとめて貼り付け」が出ていません。");
+        }
+
+        // 選んだ順に、テキスト、スクリーンショットの順で貼られる
+        await TestMouse.ClickAsync(button.X, button.Y, hoverMilliseconds: 250);
+        var first = await page.NextPasteAsync(15000);
+        var second = await page.NextPasteAsync(15000);
+        await Task.Delay(300);
+        ScreenCapture.Save("app-paste-many");
+        Assert.Equal("明日の打ち合わせは 10 時からです。会議室は 3 階の A です。", first.Text, first.Raw);
+        Assert.Equal(1, second.Files.Count, second.Raw);
+        Assert.Equal("image.png", second.Files[0].Name, second.Raw);
+        Assert.Equal(1600, second.Width, second.Raw);
+    }
+
+    [Fact(WindowsOnly = true)]
+    public async Task CopyingSomethingFlashesTheHandle()
+    {
+        using var app = await RunningApp.StartAsync();
+        using var other = new ClipboardWatcher();
+        other.Start();
+        await Task.Delay(1500);
+        var before = DemoClips().Count;
+
+        // ほかのアプリがテキストをコピーすると、棚にしまわれて、取っ手から印が少し出る（画面写真で確かめる）
+        Assert.Equal(WriteStatus.Ok, await other.WriteAsync([Hikidana.Core.Paste.PastePlanner.UnicodeText("取っ手の合図のテスト")]));
+        var stored = await Desktop.WaitUntilAsync(() => DemoClips().Count == before + 1, TimeSpan.FromSeconds(5));
+        await Task.Delay(300);
+        ScreenCapture.Save("app-capture-signal");
+        Assert.True(stored, "コピーしたものが棚に入りませんでした。");
+        Assert.False(app.HasExited);
+    }
+
+    [Fact(WindowsOnly = true)]
     public async Task MoreMenuShowsItsItems()
     {
         var page = await ChromiumPage.SharedAsync();
@@ -292,6 +409,23 @@ public sealed class AppTests
         await Task.Delay(600);
         ScreenCapture.Save("app-shelf-after-dark-switch");
         Assert.False(app.HasExited, "色を変えたあと、アプリが終了しました。");
+    }
+
+    /// <summary>見本の棚にしまってあるものの Id（新しい順。索引のファイルを直接読む）。読めなければ空。</summary>
+    private static IReadOnlyList<string> DemoClipIds()
+    {
+        try
+        {
+            using var stream = new FileStream(Path.Combine(DemoRoot, "clips.json"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var document = JsonDocument.Parse(stream);
+            return document.RootElement.GetProperty("Items").EnumerateArray()
+                .Select(item => item.TryGetProperty("Id", out var id) ? id.GetString() ?? string.Empty : string.Empty)
+                .ToList();
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return [];
+        }
     }
 
     /// <summary>見本の棚にしまってあるものの種類とピン留め（索引のファイルを直接読む）。読めなければ空。</summary>

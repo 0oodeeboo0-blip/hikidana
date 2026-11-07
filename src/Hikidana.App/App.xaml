@@ -249,6 +249,32 @@
       </Setter>
     </Style>
 
+    <!-- アクセント色で塗った、いちばん大事なボタン（まとめて貼り付けなど） -->
+    <Style x:Key="AccentButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource Hkd.Accent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Hkd.OnAccent}" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Padding" Value="12,5,12,6" />
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Frame" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource Hkd.AccentHover}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource Hkd.AccentPressed}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- 文字のボタン（知らせの「元に戻す」など） -->
     <Style x:Key="TextButton" TargetType="Button">
       <Setter Property="Background" Value="Transparent" />

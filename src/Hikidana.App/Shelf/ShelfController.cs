@@ -35,6 +35,8 @@ internal sealed partial class ShelfController : IDisposable
     private readonly ForegroundWatcher foreground = new();
     private readonly DispatcherTimer clock = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly DispatcherTimer leaveTimer = new() { Interval = TimeSpan.FromMilliseconds(700) };
+    private readonly DispatcherTimer pruneTimer = new() { Interval = TimeSpan.FromMinutes(10) };
+    private readonly GlobalHotkey hotkey = new();
     private readonly Dispatcher dispatcher;
     private ShelfLayout layout = null!;
     private bool isOpen;
@@ -44,8 +46,11 @@ internal sealed partial class ShelfController : IDisposable
     private TargetWindow? lastExternal;
     private TrayIcon? tray;
     private EventHandler? openingFrame;
+    private readonly DismissWatcher dismiss;
     private int refreshQueued;
     private bool relayoutQueued;
+    private bool dialogOpen;
+    private bool hotkeyWorks = true;
     private bool disposed;
 
     /// <param name="startup">サインインしたら起動する設定。見本で動かすときは null（本物の設定を変えない）。</param>
@@ -58,6 +63,15 @@ internal sealed partial class ShelfController : IDisposable
         this.settingsStore = settingsStore;
         this.startup = startup;
         dispatcher = Dispatcher.CurrentDispatcher;
+
+        // 棚の外のクリックと Esc で閉じる（棚が開いている間だけ見張る）
+        dismiss = new DismissWatcher
+        {
+            IsBusy = () => dragging || dialogOpen || ShelfWindow.IsMenuOpen,
+            TakesEscape = () => isOpen && !keepOpen,
+        };
+        dismiss.ClickedOutside += OnClickedOutside;
+        dismiss.EscapePressed += () => Close(restoreFocus: true);
 
         handle.Clicked += Toggle;
         handle.HoverDwelled += Open;
@@ -95,6 +109,9 @@ internal sealed partial class ShelfController : IDisposable
         shelf.OpenLogsRequested += () => OpenFolder(Log.Folder ?? store.Root);
         shelf.SettingsRequested += OpenSettings;
         shelf.ClearRequested += Clear;
+        shelf.PasteManyRequested += OnPasteManyRequested;
+        shelf.DeleteManyRequested += OnDeleteManyRequested;
+        hotkey.Pressed += OnHotkey;
         shelf.QuitRequested += () => Application.Current.Shutdown();
     }
 
@@ -119,6 +136,9 @@ internal sealed partial class ShelfController : IDisposable
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         clock.Tick += (_, _) => UpdateTimes();
         clock.Start();
+        pruneTimer.Tick += (_, _) => PruneOld();
+        pruneTimer.Start();
+        ApplyHotkey();
         Theme.Palette.Changed += OnPaletteChanged;
 
         tray = new TrayIcon(TrayTooltip());
@@ -136,7 +156,11 @@ internal sealed partial class ShelfController : IDisposable
             // 初めてのとき: 取っ手の場所を知らせる
             settings.WelcomeShown = true;
             SaveSettings();
-            ShowToast(WelcomeMessage(settings.Edge), ToastKind.Info, TimeSpan.FromSeconds(10));
+            ShowToast(WelcomeMessage(settings.Edge, hotkeyWorks ? hotkey.Current : null), ToastKind.Info, TimeSpan.FromSeconds(10));
+        }
+        else if (!hotkeyWorks)
+        {
+            ShowHotkeyTaken();
         }
 
         Log.Info($"棚を用意しました（{settings.Edge}、位置 {settings.HandlePosition:0.00}、作業領域 {layout.WorkArea}、拡大率 {layout.Scale:0.##}）");
@@ -156,6 +180,7 @@ internal sealed partial class ShelfController : IDisposable
         isOpen = true;
         AnimateOpening();
         handle.Hide();
+        dismiss.Start();
         if (settings.OpenOnHover)
         {
             // 棚に入らずに離れていったときも閉じるよう、見張り始める
@@ -176,6 +201,7 @@ internal sealed partial class ShelfController : IDisposable
 
         var wasTyping = typing;
         typing = false;
+        dismiss.Stop();
         leaveTimer.Stop();
         StopOpening();
         shelf.Hide();
@@ -197,6 +223,18 @@ internal sealed partial class ShelfController : IDisposable
         else
         {
             Open();
+        }
+    }
+
+    /// <summary>
+    /// 棚の外をクリックした（作業中のアプリの中でも）: 開いたままにしていなければ閉じる。
+    /// クリックはそのままアプリへ届くので、入力欄をクリックすれば、閉じると同時にそこへ文字を打てる。
+    /// </summary>
+    private void OnClickedOutside()
+    {
+        if (isOpen && !keepOpen && !dragging)
+        {
+            Close();
         }
     }
 
@@ -227,6 +265,9 @@ internal sealed partial class ShelfController : IDisposable
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         clock.Stop();
         leaveTimer.Stop();
+        pruneTimer.Stop();
+        dismiss.Dispose();
+        hotkey.Dispose();
         settingsWindow?.Close();
         tray?.Dispose();
         foreground.Dispose();
@@ -610,19 +651,7 @@ internal sealed partial class ShelfController : IDisposable
         var message = scope == ClearScope.Screenshots
             ? $"ピン留め以外のスクリーンショットを {removed.Count} 件消しました。"
             : $"ピン留め以外の {removed.Count} 件を消しました。";
-        ShowToast(message, ToastKind.Info, TimeSpan.FromSeconds(8), "元に戻す", () =>
-        {
-            try
-            {
-                var restored = store.RestoreMany(removed);
-                Log.Info($"まとめて消したものを戻しました: {restored} / {removed.Count} 件");
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                Log.Warn("元に戻せませんでした。", ex);
-                ShowToast("元に戻せませんでした。", ToastKind.Critical, TimeSpan.FromSeconds(6));
-            }
-        });
+        ShowToast(message, ToastKind.Info, TimeSpan.FromSeconds(8), "元に戻す", () => RestoreRemoved(removed));
     }
 
     private void OnDeleteRequested(ClipItem item)
@@ -656,7 +685,7 @@ internal sealed partial class ShelfController : IDisposable
         toast.Present(message, kind, layout, isOpen, duration, actionText, action);
     }
 
-    private static string WelcomeMessage(ShelfEdge edge)
+    private static string WelcomeMessage(ShelfEdge edge, Hotkey? shortcut)
     {
         var where = edge switch
         {
@@ -665,7 +694,189 @@ internal sealed partial class ShelfController : IDisposable
             ShelfEdge.Bottom => "下端",
             _ => "右端",
         };
-        return $"Hikidana が動いています。画面の{where}の細い線（取っ手）をクリックすると、コピーしたものやスクリーンショットの棚が開きます。";
+        var keys = shortcut is { } key ? $"{key} でも開けます。" : string.Empty;
+        return $"Hikidana が動いています。画面の{where}の細い線（取っ手）をクリックすると、コピーしたものやスクリーンショットの棚が開きます。{keys}";
+    }
+
+    /// <summary>設定のショートカットを登録し直す。ほかのアプリが使っていて登録できなければ false。</summary>
+    private bool ApplyHotkey()
+    {
+        var key = Hotkey.Parse(settings.OpenHotkey);
+        hotkeyWorks = hotkey.Register(key);
+        if (!hotkeyWorks)
+        {
+            Log.Warn($"ショートカット {key} を登録できませんでした（ほかのアプリが使っているようです）。");
+        }
+        else
+        {
+            Log.Info(key is { } k ? $"ショートカット: {k}" : "ショートカットは使いません。");
+        }
+
+        return hotkeyWorks;
+    }
+
+    private void ShowHotkeyTaken() =>
+        ShowToast($"ショートカット {Hotkey.Parse(settings.OpenHotkey)} は、ほかのアプリが使っているため使えません。設定の画面で、別のキーを選べます。", ToastKind.Caution, TimeSpan.FromSeconds(8));
+
+    /// <summary>
+    /// ショートカットが押された: いま使っているアプリを貼り付け先として覚えてから、棚を開いてキーボードを渡す
+    /// （文字で探して ↑↓ で選び、Enter で貼り付け、Esc で閉じて元のアプリに戻る）。キーボードで使っている途中なら閉じる。
+    /// </summary>
+    private void OnHotkey()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        if (isOpen && typing)
+        {
+            Close(restoreFocus: true);
+            return;
+        }
+
+        if (CurrentTarget() is { } target)
+        {
+            lastExternal = target;
+        }
+
+        if (!isOpen)
+        {
+            Open();
+        }
+
+        BeginTyping();
+        Log.Info("ショートカットで棚を開きました。");
+    }
+
+    /// <summary>コピーやスクリーンショットを棚にしまった（どのスレッドからでも呼べる）。棚が閉じていれば、取っ手で知らせる。</summary>
+    public void NotifyRecorded(Clip clip)
+    {
+        dispatcher.BeginInvoke(() =>
+        {
+            if (!disposed && !isOpen && settings.SignalOnCapture)
+            {
+                handle.Flash(ClipItem.GlyphFor(clip.Kind));
+            }
+        });
+    }
+
+    /// <summary>自動で片付ける設定なら、期間を過ぎたものを消す（ときどき呼ぶ。画面のスレッドの外で消す）。</summary>
+    private void PruneOld()
+    {
+        if (settings.AutoDeleteDays <= 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var removed = store.Prune();
+                if (removed > 0)
+                {
+                    Log.Info($"古いものを {removed} 件、自動で消しました。");
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn("古いものを自動で消せませんでした。", ex);
+            }
+        });
+    }
+
+    /// <summary>選んだものを、選んだ順に続けて貼り付ける（1 つずつクリップボードに置いて Ctrl+V）。</summary>
+    private async void OnPasteManyRequested(IReadOnlyList<ClipItem> items)
+    {
+        var target = CurrentTarget();
+        var clips = items.Select(i => i.Clip).ToList();
+        shelf.ClearPicks();
+        if (settings.CloseAfterPaste && !keepOpen)
+        {
+            Close();
+        }
+
+        if (clips.Count > 1)
+        {
+            ShowToast($"{clips.Count} 件を続けて貼り付けています…", ToastKind.Info, TimeSpan.FromSeconds(30));
+        }
+
+        var pasted = 0;
+        Clip? previous = null;
+        try
+        {
+            foreach (var clip in clips)
+            {
+                if (previous is not null)
+                {
+                    // 貼り付け先が前のものを読み終えるのを待ってから、クリップボードを入れ替える（画像は読むのに時間がかかる）
+                    await Task.Delay(previous.IsImage || clip.IsImage ? MultiPasteImageGap : MultiPasteTextGap);
+                }
+
+                var result = await paste.PasteAsync(clip, target, PasteMode.Normal);
+                if (result.Outcome != PasteOutcome.Pasted)
+                {
+                    Log.Info($"まとめて貼り付け: {pasted} 件目のあとで止まりました（{result.Outcome}）。");
+                    ShowResult(result);
+                    return;
+                }
+
+                pasted++;
+                previous = clip;
+            }
+
+            Log.Info($"まとめて貼り付け: {pasted} 件、先 {target?.ToString() ?? "なし"}");
+            ShowToast($"{pasted} 件を続けて貼り付けました。", ToastKind.Success, TimeSpan.FromSeconds(2.5));
+        }
+        catch (Exception ex)
+        {
+            Log.Error("まとめて貼り付けている途中で例外", ex);
+            ShowToast($"{pasted} 件を貼り付けたところで、止まりました。", ToastKind.Critical, TimeSpan.FromSeconds(6));
+        }
+    }
+
+    /// <summary>まとめて貼るとき、画像のあとで空ける時間（貼り付け先が画像を読み終えるまで）。</summary>
+    private static readonly TimeSpan MultiPasteImageGap = TimeSpan.FromMilliseconds(900);
+
+    /// <summary>まとめて貼るとき、テキストのあとで空ける時間。</summary>
+    private static readonly TimeSpan MultiPasteTextGap = TimeSpan.FromMilliseconds(350);
+
+    /// <summary>選んだものを、まとめて消す（知らせの「元に戻す」で戻せる）。</summary>
+    private void OnDeleteManyRequested(IReadOnlyList<ClipItem> items)
+    {
+        IReadOnlyList<Clip> removed;
+        try
+        {
+            removed = store.DeleteMany(items.Select(i => i.Clip.Id));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn("選んだものを消せませんでした。", ex);
+            ShowToast("消せませんでした。", ToastKind.Critical, TimeSpan.FromSeconds(6));
+            return;
+        }
+
+        if (removed.Count > 0)
+        {
+            Log.Info($"選んだものを {removed.Count} 件消しました。");
+            ShowToast($"選んだ {removed.Count} 件を消しました。", ToastKind.Info, TimeSpan.FromSeconds(8), "元に戻す", () => RestoreRemoved(removed));
+        }
+    }
+
+    /// <summary>まとめて消したものを元に戻す（知らせの「元に戻す」）。</summary>
+    private void RestoreRemoved(IReadOnlyList<Clip> removed)
+    {
+        try
+        {
+            var restored = store.RestoreMany(removed);
+            Log.Info($"消したものを戻しました: {restored} / {removed.Count} 件");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn("元に戻せませんでした。", ex);
+            ShowToast("元に戻せませんでした。", ToastKind.Critical, TimeSpan.FromSeconds(6));
+        }
     }
 
     private void OnForegroundChanged(nint window)
@@ -766,7 +977,18 @@ internal sealed partial class ShelfController : IDisposable
             OverwritePrompt = true,
             InitialDirectory = Environment.GetFolderPath(clip.IsImage ? Environment.SpecialFolder.MyPictures : Environment.SpecialFolder.MyDocuments),
         };
-        if (dialog.ShowDialog(shelf.IsVisible ? shelf : null) != true)
+        bool? chosen;
+        dialogOpen = true;
+        try
+        {
+            chosen = dialog.ShowDialog(shelf.IsVisible ? shelf : null);
+        }
+        finally
+        {
+            dialogOpen = false;
+        }
+
+        if (chosen != true)
         {
             return;
         }

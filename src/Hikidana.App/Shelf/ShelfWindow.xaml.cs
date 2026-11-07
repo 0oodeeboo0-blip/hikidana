@@ -18,6 +18,8 @@ public partial class ShelfWindow : Window
 {
     private const ushort LeftShift = 0xA0;
     private const ushort RightShift = 0xA1;
+    private const ushort LeftControl = 0xA2;
+    private const ushort RightControl = 0xA3;
 
     /// <summary>これだけ動かしたら、クリックではなくドラッグとみなす（DIP）。</summary>
     private const double DragThreshold = 8;
@@ -32,6 +34,9 @@ public partial class ShelfWindow : Window
     private bool pinnedOnly;
     private string query = string.Empty;
     private ClipItem? selected;
+
+    /// <summary>まとめて貼るために選んだもの（クリップの Id、選んだ順）。</summary>
+    private readonly List<string> picked = [];
     private bool typing;
     private bool acrylic;
 
@@ -48,7 +53,11 @@ public partial class ShelfWindow : Window
         CardList.ItemsSource = Items;
         view = CollectionViewSource.GetDefaultView(Items);
         view.Filter = Matches;
-        Items.CollectionChanged += (_, _) => UpdateCounts();
+        Items.CollectionChanged += (_, _) =>
+        {
+            UpdateCounts();
+            UpdatePicks();
+        };
     }
 
     /// <summary>カード（新しい順）。</summary>
@@ -80,6 +89,26 @@ public partial class ShelfWindow : Window
 
     /// <summary>「…」の「ピン留め以外の…を消す」。</summary>
     public event Action<ClearScope>? ClearRequested;
+
+    /// <summary>選んだものを、選んだ順にまとめて貼り付ける。</summary>
+    public event Action<IReadOnlyList<ClipItem>>? PasteManyRequested;
+
+    /// <summary>選んだものを、まとめて消す。</summary>
+    public event Action<IReadOnlyList<ClipItem>>? DeleteManyRequested;
+
+    /// <summary>選んでいるもの（選んだ順）。</summary>
+    public IReadOnlyList<ClipItem> PickedItems =>
+        picked.Select(id => Items.FirstOrDefault(i => i.Clip.Id == id)).OfType<ClipItem>().ToList();
+
+    /// <summary>選ぶのをやめる。</summary>
+    public void ClearPicks()
+    {
+        if (picked.Count > 0)
+        {
+            picked.Clear();
+            UpdatePicks();
+        }
+    }
 
     /// <summary>「マウスを乗せるだけで開く」を入り切りした。</summary>
     public event Action<bool>? OpenOnHoverChanged;
@@ -131,6 +160,7 @@ public partial class ShelfWindow : Window
     {
         typing = false;
         Select(null);
+        ClearPicks();
         if (query.Length > 0 || category is not null || pinnedOnly)
         {
             SearchBox.Text = string.Empty;
@@ -212,6 +242,54 @@ public partial class ShelfWindow : Window
 
     private static bool ShiftHeld() => InputSender.HeldModifiers().Any(k => k is LeftShift or RightShift);
 
+    private static bool ControlHeld() => InputSender.HeldModifiers().Any(k => k is LeftControl or RightControl);
+
+    /// <summary>選ぶ・外す。外したら、あとの番号を詰める。</summary>
+    private void TogglePick(ClipItem item)
+    {
+        if (!picked.Remove(item.Clip.Id))
+        {
+            picked.Add(item.Clip.Id);
+        }
+
+        UpdatePicks();
+    }
+
+    /// <summary>選んだ順の番号と、下のバーを、いまのカードに合わせる（消えたものは外す）。</summary>
+    private void UpdatePicks()
+    {
+        var present = Items.Select(i => i.Clip.Id).ToHashSet(StringComparer.Ordinal);
+        picked.RemoveAll(id => !present.Contains(id));
+        foreach (var item in Items)
+        {
+            item.PickOrder = picked.IndexOf(item.Clip.Id) + 1;
+        }
+
+        SelectionBar.Visibility = picked.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SelectionText.Text = $"{picked.Count} 件を選んでいます";
+    }
+
+    private void PastePicked_Click(object sender, RoutedEventArgs e)
+    {
+        var items = PickedItems;
+        if (items.Count > 0)
+        {
+            PasteManyRequested?.Invoke(items);
+        }
+    }
+
+    private void DeletePicked_Click(object sender, RoutedEventArgs e)
+    {
+        var items = PickedItems;
+        ClearPicks();
+        if (items.Count > 0)
+        {
+            DeleteManyRequested?.Invoke(items);
+        }
+    }
+
+    private void ClearPicks_Click(object sender, RoutedEventArgs e) => ClearPicks();
+
     private static ClipItem? ItemOf(object sender) => (sender as FrameworkElement)?.DataContext as ClipItem;
 
     private static ScrollViewer? FindScrollViewer(DependencyObject root)
@@ -245,6 +323,13 @@ public partial class ShelfWindow : Window
         {
             // ドラッグのあとのクリックは、貼り付けにしない
             suppressClick = false;
+            return;
+        }
+
+        // Ctrl を押しながらクリックすると選ぶ（まとめて貼るため）。選んでいる間は、クリックで選ぶ・外す
+        if (picked.Count > 0 || ControlHeld())
+        {
+            TogglePick(item);
             return;
         }
 
@@ -407,7 +492,11 @@ public partial class ShelfWindow : Window
                 e.Handled = true;
                 break;
             case Key.Escape:
-                if (SearchBox.Text.Length > 0)
+                if (picked.Count > 0)
+                {
+                    ClearPicks();
+                }
+                else if (SearchBox.Text.Length > 0)
                 {
                     SearchBox.Text = string.Empty;
                 }

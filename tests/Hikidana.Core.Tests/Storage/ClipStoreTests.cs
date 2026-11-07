@@ -222,6 +222,49 @@ public sealed class ClipStoreTests : IDisposable
     }
 
     [Fact]
+    public void AutoDeleteCanBeLimitedToScreenshots()
+    {
+        var store = NewStore();
+        var pinnedShot = store.Add(new ClipDraft { Kind = ClipKind.Screenshot, Image = TestImages.Opaque(21, 20) })!;
+        time.Advance(TimeSpan.FromSeconds(1));
+        var oldText = store.Add(Text("古いテキスト"))!;
+        time.Advance(TimeSpan.FromSeconds(1));
+        var oldShot = store.Add(new ClipDraft { Kind = ClipKind.Screenshot, Image = TestImages.Opaque(20, 20) })!;
+        store.SetPinned(pinnedShot.Id, true);
+        time.Advance(TimeSpan.FromDays(8));
+        var newShot = store.Add(new ClipDraft { Kind = ClipKind.Screenshot, Image = TestImages.Opaque(22, 20) })!;
+
+        Assert.Equal(1, store.CountOlderThan(TimeSpan.FromDays(7), ClearScope.Screenshots));
+        Assert.Equal(2, store.CountOlderThan(TimeSpan.FromDays(7), ClearScope.All));
+        Assert.Equal(1, store.SetAutoDelete(TimeSpan.FromDays(7), ClearScope.Screenshots));
+        Assert.SequenceEqual(new[] { newShot.Id, oldText.Id, pinnedShot.Id }, store.Items.Select(c => c.Id));
+        Assert.False(store.Items.Any(c => c.Id == oldShot.Id));
+
+        // 時間がたつと、次の片付けで消える（使い直したものは、そこから数える）
+        time.Advance(TimeSpan.FromDays(6));
+        store.Touch(oldText.Id);
+        time.Advance(TimeSpan.FromDays(2));
+        Assert.Equal(1, store.Prune());
+        Assert.SequenceEqual(new[] { oldText.Id, pinnedShot.Id }, store.Items.Select(c => c.Id));
+        Assert.Equal(0, store.SetAutoDelete(null, ClearScope.Screenshots));
+    }
+
+    [Fact]
+    public void PickedClipsCanBeDeletedTogetherEvenIfPinned()
+    {
+        var store = NewStore();
+        var a = store.Add(Text("A"))!;
+        var b = store.Add(Text("B"))!;
+        var c = store.Add(Text("C"))!;
+        store.SetPinned(b.Id, true);
+        var removed = store.DeleteMany([a.Id, b.Id, "無いもの"]);
+        Assert.Equal(2, removed.Count);
+        Assert.SequenceEqual(new[] { c.Id }, store.Items.Select(x => x.Id));
+        Assert.Equal(2, store.RestoreMany(removed));
+        Assert.True(store.Find(b.Id)!.Pinned);
+    }
+
+    [Fact]
     public void OldItemsExpire()
     {
         var store = NewStore(new ClipStoreOptions { MaxAge = TimeSpan.FromDays(7) });

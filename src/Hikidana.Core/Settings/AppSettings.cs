@@ -39,11 +39,29 @@ public sealed class AppSettings
     /// <summary>しまっておく数（ピン留めは数えない）。</summary>
     public int MaxItems { get; set; } = 300;
 
+    /// <summary>棚を開くショートカット（例: win+alt+v）。空なら使わない。</summary>
+    public string OpenHotkey { get; set; } = Hotkey.Default;
+
+    /// <summary>最後に使ってから、この日数がたったものを自動で消す。0 なら消さない。</summary>
+    public int AutoDeleteDays { get; set; }
+
+    /// <summary>自動で消すもの: screenshots（スクリーンショットだけ）・all（ピン留め以外すべて）。</summary>
+    public string AutoDeleteScope { get; set; } = "screenshots";
+
+    /// <summary>棚に何か入ったら、取っ手から印を少し出して知らせる。</summary>
+    public bool SignalOnCapture { get; set; } = true;
+
     /// <summary>記録しないアプリ（実行ファイルの名前）。</summary>
     public List<string> ExcludedApps { get; set; } = [];
 
     /// <summary>初めて起動したときの案内を出した。</summary>
     public bool WelcomeShown { get; set; }
+
+    /// <summary>自動で消すまでの期間（消さないなら null）。</summary>
+    public TimeSpan? AutoDeleteAge() => AutoDeleteDays > 0 ? TimeSpan.FromDays(AutoDeleteDays) : null;
+
+    /// <summary>自動で消すものの範囲。</summary>
+    public Storage.ClearScope AutoDeleteClearScope() => AutoDeleteScope == "all" ? Storage.ClearScope.All : Storage.ClearScope.Screenshots;
 
     /// <summary>おかしな値を直す。</summary>
     public AppSettings Normalize()
@@ -61,6 +79,11 @@ public sealed class AppSettings
             _ => "system",
         };
         MaxItems = Math.Clamp(MaxItems, 10, 5000);
+        OpenHotkey = string.IsNullOrWhiteSpace(OpenHotkey) || OpenHotkey.Trim().Equals("none", StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : Hotkey.Parse(OpenHotkey)?.ToSetting() ?? Hotkey.Default;
+        AutoDeleteDays = Math.Clamp(AutoDeleteDays, 0, 365);
+        AutoDeleteScope = AutoDeleteScope?.ToLowerInvariant() == "all" ? "all" : "screenshots";
         ExcludedApps = (ExcludedApps ?? [])
             .Where(a => !string.IsNullOrWhiteSpace(a))
             .Select(a => a.Trim())

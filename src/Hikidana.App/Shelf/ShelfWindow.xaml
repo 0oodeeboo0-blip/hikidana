@@ -28,6 +28,7 @@
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
     <!-- 上の帯 -->
@@ -126,6 +127,7 @@
         <DataTemplate DataType="{x:Type local:ClipItem}">
           <Button Margin="0,0,0,8" Click="Card_Click"
                   PreviewMouseLeftButtonDown="Card_PreviewMouseLeftButtonDown" PreviewMouseMove="Card_PreviewMouseMove"
+                  AutomationProperties.AutomationId="{Binding Clip.Id}"
                   ToolTip="{Binding PasteToolTip}" ToolTipService.InitialShowDelay="1500">
             <Button.Style>
               <Style TargetType="Button" BasedOn="{StaticResource CardButton}">
@@ -133,6 +135,11 @@
                   <DataTrigger Binding="{Binding IsSelected}" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource Hkd.Accent}" />
                     <Setter Property="Background" Value="{DynamicResource Hkd.CardBackgroundHover}" />
+                  </DataTrigger>
+                  <!-- まとめて貼るために選んだもの -->
+                  <DataTrigger Binding="{Binding IsPicked}" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource Hkd.Accent}" />
+                    <Setter Property="Background" Value="{DynamicResource Hkd.AccentSoft}" />
                   </DataTrigger>
                 </Style.Triggers>
               </Style>
@@ -194,6 +201,13 @@
                     <Run Text="{Binding KindName, Mode=OneWay}" /><Run Text="・" /><Run Text="{Binding Meta, Mode=OneWay}" />
                   </TextBlock>
                 </StackPanel>
+                <!-- 選んだ順の番号 -->
+                <Border Grid.Column="2" Width="22" Height="22" CornerRadius="11" Margin="4,-4,0,-4"
+                        HorizontalAlignment="Right" VerticalAlignment="Center" Background="{DynamicResource Hkd.Accent}"
+                        Visibility="{Binding IsPicked, Converter={StaticResource Visible}}">
+                  <TextBlock Text="{Binding PickOrder}" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,1"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource Hkd.OnAccent}" />
+                </Border>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="4,-6,-4,-6">
                   <StackPanel.Style>
                     <Style TargetType="StackPanel">
@@ -201,6 +215,9 @@
                       <Style.Triggers>
                         <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
                           <Setter Property="Opacity" Value="1" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsPicked}" Value="True">
+                          <Setter Property="Visibility" Value="Collapsed" />
                         </DataTrigger>
                       </Style.Triggers>
                     </Style>
@@ -263,8 +280,25 @@
       </ItemsControl.ItemTemplate>
     </ItemsControl>
 
+    <!-- まとめて貼る: カードを選んでいる間だけ出す -->
+    <Border x:Name="SelectionBar" Grid.Row="4" Margin="12,0,12,12" Padding="12,8,6,8" CornerRadius="8" BorderThickness="1"
+            Background="{DynamicResource Hkd.CardBackgroundHover}" BorderBrush="{DynamicResource Hkd.Accent}" Visibility="Collapsed">
+      <DockPanel>
+        <Button x:Name="ClearPicksButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;"
+                ToolTip="選ぶのをやめる" Click="ClearPicks_Click" />
+        <Button x:Name="DeletePickedButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE74D;"
+                ToolTip="選んだものを消す" Click="DeletePicked_Click" />
+        <Button x:Name="PastePickedButton" DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Margin="0,0,6,0"
+                Content="まとめて貼り付け" Click="PastePicked_Click" />
+        <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
+          <TextBlock x:Name="SelectionText" FontSize="13" FontWeight="SemiBold" />
+          <TextBlock Text="クリックで選ぶ・外す" FontSize="11" Foreground="{DynamicResource Hkd.TextSecondary}" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
     <!-- ほかのアプリからドラッグしてきたとき -->
-    <Border x:Name="DropOverlay" Grid.Row="0" Grid.RowSpan="4" Margin="8" CornerRadius="8" Visibility="Collapsed"
+    <Border x:Name="DropOverlay" Grid.Row="0" Grid.RowSpan="5" Margin="8" CornerRadius="8" Visibility="Collapsed"
             Background="{DynamicResource Hkd.PanelBackground}" BorderBrush="{DynamicResource Hkd.Accent}" BorderThickness="2"
             IsHitTestVisible="False">
       <StackPanel VerticalAlignment="Center" Margin="24,0">

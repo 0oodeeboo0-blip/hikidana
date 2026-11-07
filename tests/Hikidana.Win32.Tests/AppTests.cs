@@ -200,6 +200,66 @@ public sealed class AppTests
         return point;
     }
 
+    [Fact(WindowsOnly = true)]
+    public async Task SettingsSwitchToDarkAtOnceAndTheShelfFollows()
+    {
+        using var app = await RunningApp.StartAsync("--settings");
+        var window = await app.WaitForWindowAsync("Hikidana の設定", TimeSpan.FromSeconds(10));
+        Assert.NotEqual((nint)0, window, "--settings で起動しても、設定の画面が出ませんでした。");
+        await Task.Delay(800);
+
+        // 「色」の一覧を開いて「ダーク」を選ぶ
+        if (await Automation.WaitForCenterAsync(window, "ThemeBox", TimeSpan.FromSeconds(5)) is not { } box)
+        {
+            throw new AssertionException("設定の画面に「色」の一覧が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(box.X, box.Y, hoverMilliseconds: 300);
+        await Task.Delay(500);
+        if (await Automation.WaitForNamedCenterAsync(window, "ダーク", TimeSpan.FromSeconds(3)) is not { } dark)
+        {
+            ScreenCapture.Save("failed-app-settings-theme");
+            throw new AssertionException("「色」の一覧に「ダーク」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(dark.X, dark.Y, hoverMilliseconds: 300);
+        string? theme = null;
+        var saved = await Desktop.WaitUntilAsync(
+            () =>
+            {
+                theme = DemoSetting("theme");
+                return theme == "dark";
+            },
+            TimeSpan.FromSeconds(3));
+        await Task.Delay(800);
+        ScreenCapture.Save("app-settings-dark-switch");
+        Assert.True(saved, $"色を変えても、設定のファイルが変わりません（theme: {theme}）。");
+
+        // 棚を開くと、棚もダークになっている（画面写真で確かめる）。アプリは動き続けている
+        Assert.True(TestNative.GetWindowRect(app.Handle, out var rect));
+        await TestMouse.ClickAsync(rect.Right - 3, (rect.Top + rect.Bottom) / 2, hoverMilliseconds: 600);
+        var shelf = await app.WaitForWindowAsync("Hikidana", TimeSpan.FromSeconds(5));
+        Assert.NotEqual((nint)0, shelf, "色を変えたあと、棚が開きませんでした。");
+        await Task.Delay(600);
+        ScreenCapture.Save("app-shelf-after-dark-switch");
+        Assert.False(app.HasExited, "色を変えたあと、アプリが終了しました。");
+    }
+
+    /// <summary>見本の設定のファイルの、文字の値（例: theme）。読めなければ null。</summary>
+    private static string? DemoSetting(string name)
+    {
+        try
+        {
+            using var stream = new FileStream(Path.Combine(DemoRoot, "settings.json"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var document = JsonDocument.Parse(stream);
+            return document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>見本の設定のファイルの、棚の端と「マウスを乗せるだけで開く」。読めなければ (null, false)。</summary>
     private static (string? Edge, bool OpenOnHover) DemoSettings()
     {
@@ -250,6 +310,8 @@ public sealed class AppTests
         public nint Handle { get; }
 
         public int ProcessId => process.Id;
+
+        public bool HasExited => process.HasExited;
 
         public static async Task<RunningApp> StartAsync(params string[] extra)
         {

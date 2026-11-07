@@ -19,6 +19,7 @@ public partial class ToastWindow : Window
 {
     private readonly DispatcherTimer timer = new();
     private Action? action;
+    private PixelRect? placed;
 
     public ToastWindow()
     {
@@ -36,6 +37,15 @@ public partial class ToastWindow : Window
                 timer.Start();
             }
         };
+
+        // 表示倍率の違う画面へ動かすと、WPF がウインドウの大きさを変えてしまうので、決めた大きさに戻す
+        DpiChanged += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (placed is { } rect && IsVisible)
+            {
+                WindowHelper.Place(this, rect);
+            }
+        });
     }
 
     /// <summary>知らせを出す。<paramref name="actionText"/> を渡すと、右にボタン（「元に戻す」など）を付ける。</summary>
@@ -67,6 +77,7 @@ public partial class ToastWindow : Window
         Card.Measure(new Size(width, double.PositiveInfinity));
         var height = Math.Ceiling(Card.DesiredSize.Height);
         var rect = layout.Toast((int)Math.Ceiling(width * layout.Scale), (int)Math.Ceiling(height * layout.Scale), panelOpen);
+        placed = rect;
         WindowHelper.Place(this, rect);
         if (!IsVisible)
         {

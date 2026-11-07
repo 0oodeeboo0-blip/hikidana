@@ -9,6 +9,7 @@ namespace Hikidana.Win32.Tests.Support;
 /// </summary>
 internal static partial class Automation
 {
+    private const int UIA_NamePropertyId = 30005;
     private const int UIA_AutomationIdPropertyId = 30011;
     private const int TreeScope_Descendants = 4;
     private const ushort VT_BSTR = 8;
@@ -41,7 +42,12 @@ internal static partial class Automation
     /// <paramref name="window"/> の中で、AutomationId が <paramref name="automationId"/> の部品の四角（本当の画素）。
     /// 見つからなければ null。
     /// </summary>
-    public static unsafe TestNative.RECT? FindBounds(nint window, string automationId)
+    public static TestNative.RECT? FindBounds(nint window, string automationId) => FindBounds(window, UIA_AutomationIdPropertyId, automationId);
+
+    /// <summary><paramref name="window"/> の中で、名前（見えている文字）が <paramref name="name"/> の部品の四角（本当の画素）。</summary>
+    public static TestNative.RECT? FindBoundsByName(nint window, string name) => FindBounds(window, UIA_NamePropertyId, name);
+
+    private static unsafe TestNative.RECT? FindBounds(nint window, int propertyId, string value)
     {
         _ = CoInitializeEx(0, COINIT_MULTITHREADED);
         var clsid = CuiAutomationClass;
@@ -50,15 +56,15 @@ internal static partial class Automation
         nint root = 0;
         nint condition = 0;
         nint found = 0;
-        var name = SysAllocString(automationId);
+        var text = SysAllocString(value);
         try
         {
             Check(CoCreateInstance(&clsid, 0, CLSCTX_INPROC_SERVER, &iid, &automation), "CoCreateInstance(CUIAutomation)");
             var table = *(nint**)automation;
 
             Check(((delegate* unmanaged[Stdcall]<nint, nint, nint*, int>)table[ElementFromHandleSlot])(automation, window, &root), "ElementFromHandle");
-            var value = new Variant { Type = VT_BSTR, Value = name };
-            Check(((delegate* unmanaged[Stdcall]<nint, int, Variant, nint*, int>)table[CreatePropertyConditionSlot])(automation, UIA_AutomationIdPropertyId, value, &condition), "CreatePropertyCondition");
+            var variant = new Variant { Type = VT_BSTR, Value = text };
+            Check(((delegate* unmanaged[Stdcall]<nint, int, Variant, nint*, int>)table[CreatePropertyConditionSlot])(automation, propertyId, variant, &condition), "CreatePropertyCondition");
 
             var rootTable = *(nint**)root;
             Check(((delegate* unmanaged[Stdcall]<nint, int, nint, nint*, int>)rootTable[FindFirstSlot])(root, TreeScope_Descendants, condition, &found), "FindFirst");
@@ -78,17 +84,24 @@ internal static partial class Automation
             Release(condition);
             Release(root);
             Release(automation);
-            SysFreeString(name);
+            SysFreeString(text);
         }
     }
 
-    /// <summary>部品が見つかるまで待って、その真ん中（本当の画素）を返す。</summary>
-    public static async Task<(int X, int Y)?> WaitForCenterAsync(nint window, string automationId, TimeSpan timeout)
+    /// <summary>部品（AutomationId）が見つかるまで待って、その真ん中（本当の画素）を返す。</summary>
+    public static Task<(int X, int Y)?> WaitForCenterAsync(nint window, string automationId, TimeSpan timeout) =>
+        WaitForCenterAsync(() => FindBounds(window, automationId), timeout);
+
+    /// <summary>名前（見えている文字）の部品が見つかるまで待って、その真ん中（本当の画素）を返す。</summary>
+    public static Task<(int X, int Y)?> WaitForNamedCenterAsync(nint window, string name, TimeSpan timeout) =>
+        WaitForCenterAsync(() => FindBoundsByName(window, name), timeout);
+
+    private static async Task<(int X, int Y)?> WaitForCenterAsync(Func<TestNative.RECT?> find, TimeSpan timeout)
     {
         var until = DateTime.UtcNow + timeout;
         while (true)
         {
-            if (FindBounds(window, automationId) is { } rect && rect.Right > rect.Left && rect.Bottom > rect.Top)
+            if (find() is { } rect && rect.Right > rect.Left && rect.Bottom > rect.Top)
             {
                 return ((rect.Left + rect.Right) / 2, (rect.Top + rect.Bottom) / 2);
             }

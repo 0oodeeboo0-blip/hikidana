@@ -142,6 +142,113 @@
       </Setter>
     </Style>
 
+    <!-- キーボードで動かしたときに出す、フォーカスの枠（Windows 11 と同じく、まわりに 2 画素の線） -->
+    <Style x:Key="FocusRing">
+      <Setter Property="Control.Template">
+        <Setter.Value>
+          <ControlTemplate>
+            <Border Margin="-3" CornerRadius="7" BorderThickness="2" BorderBrush="{DynamicResource Hkd.FocusStroke}"
+                    SnapsToDevicePixels="True" />
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!--
+      入り切りのスイッチ（Windows 11 の設定と同じ形）。CheckBox に付ける。左に「オン」「オフ」を出し、つまみは滑って動く。
+      押している間は、つまみが内側へ少し伸びる。
+    -->
+    <Style x:Key="ToggleSwitch" TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{DynamicResource Hkd.TextPrimary}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid Background="{TemplateBinding Background}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name="StateText" Grid.Column="0" Text="オフ" MinWidth="28" Margin="0,0,12,1"
+                         TextAlignment="Right" VerticalAlignment="Center" />
+              <Grid Grid.Column="1" Width="40" Height="20" VerticalAlignment="Center">
+                <Border x:Name="Track" CornerRadius="10" BorderThickness="1"
+                        Background="{DynamicResource Hkd.ToggleFillOff}" BorderBrush="{DynamicResource Hkd.ControlStrongStroke}" />
+                <Ellipse x:Name="Knob" Width="12" Height="12" Margin="4,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                         Fill="{DynamicResource Hkd.ToggleKnobOff}">
+                  <Ellipse.RenderTransform>
+                    <TranslateTransform x:Name="KnobShift" X="0" />
+                  </Ellipse.RenderTransform>
+                </Ellipse>
+              </Grid>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="StateText" Property="Text" Value="オン" />
+                <Setter TargetName="Track" Property="Background" Value="{DynamicResource Hkd.Accent}" />
+                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Hkd.Accent}" />
+                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource Hkd.OnAccent}" />
+                <Trigger.EnterActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="KnobShift" Storyboard.TargetProperty="X" To="20" Duration="0:0:0.16">
+                        <DoubleAnimation.EasingFunction>
+                          <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="KnobShift" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.16">
+                        <DoubleAnimation.EasingFunction>
+                          <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Knob" Property="Width" Value="14" />
+                <Setter TargetName="Knob" Property="Height" Value="14" />
+                <Setter TargetName="Knob" Property="Margin" Value="3,0,0,0" />
+                <Setter TargetName="Track" Property="Background" Value="{DynamicResource Hkd.ToggleFillOffHover}" />
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsMouseOver" Value="True" />
+                  <Condition Property="IsChecked" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Track" Property="Background" Value="{DynamicResource Hkd.AccentHover}" />
+                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Hkd.AccentHover}" />
+              </MultiTrigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Knob" Property="Width" Value="17" />
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsPressed" Value="True" />
+                  <Condition Property="IsChecked" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Knob" Property="Margin" Value="0,0,0,0" />
+                <Setter TargetName="Track" Property="Background" Value="{DynamicResource Hkd.AccentPressed}" />
+                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Hkd.AccentPressed}" />
+              </MultiTrigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- 文字のボタン（知らせの「元に戻す」など） -->
     <Style x:Key="TextButton" TargetType="Button">
       <Setter Property="Background" Value="Transparent" />

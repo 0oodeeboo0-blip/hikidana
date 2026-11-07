@@ -40,6 +40,8 @@
         <Button x:Name="MoreButton" Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="その他" Click="More_Click">
           <Button.ContextMenu>
             <ContextMenu FontFamily="{StaticResource UiFont}">
+              <MenuItem x:Name="SettingsItem" Header="設定" Click="Settings_Click" />
+              <Separator />
               <MenuItem x:Name="OpenOnHoverItem" Header="マウスを乗せるだけで開く" IsCheckable="True" Click="OpenOnHover_Click" />
               <Separator />
               <MenuItem Header="しまってある場所を開く" Click="OpenData_Click" />

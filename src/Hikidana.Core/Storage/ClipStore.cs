@@ -343,6 +343,41 @@ public sealed class ClipStore
         RaiseChanged();
     }
 
+    /// <summary>しまっておく数を <paramref name="maxItems"/> にしたら消えるものの数（ピン留めは数えない）。</summary>
+    public int CountOverLimit(int maxItems)
+    {
+        lock (gate)
+        {
+            return Math.Max(0, items.Count(c => !c.Pinned) - Math.Max(1, maxItems));
+        }
+    }
+
+    /// <summary>
+    /// しまっておく数を変える。超えた分は、古いものから消す（ピン留めは消さない）。消した数を返す。
+    /// </summary>
+    public int SetMaxItems(int maxItems)
+    {
+        int removed;
+        lock (gate)
+        {
+            Options.MaxItems = Math.Max(1, maxItems);
+            var before = items.Count;
+            EnforceLimits();
+            removed = before - items.Count;
+            if (removed > 0)
+            {
+                SaveIndex();
+            }
+        }
+
+        if (removed > 0)
+        {
+            RaiseChanged();
+        }
+
+        return removed;
+    }
+
     public Clip? Find(string id)
     {
         lock (gate)

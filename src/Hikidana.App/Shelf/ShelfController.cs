@@ -19,7 +19,7 @@ namespace Hikidana.App.Shelf;
 /// 取っ手・棚・知らせのウインドウをまとめて動かす。開く・閉じる、置き場所、貼り付け、設定の保存。
 /// どれも画面のスレッドで呼ぶ。
 /// </summary>
-internal sealed class ShelfController : IDisposable
+internal sealed partial class ShelfController : IDisposable
 {
     private static readonly string[] NoTargetClasses = ["Shell_TrayWnd", "Shell_SecondaryTrayWnd", "NotifyIconOverflowWindow", "TopLevelWindowForOverflowXamlIsland"];
 
@@ -28,6 +28,7 @@ internal sealed class ShelfController : IDisposable
     private readonly PasteService paste;
     private readonly AppSettings settings;
     private readonly SettingsStore settingsStore;
+    private readonly StartupRegistration? startup;
     private readonly HandleWindow handle = new();
     private readonly ShelfWindow shelf = new();
     private readonly ToastWindow toast = new();
@@ -44,22 +45,25 @@ internal sealed class ShelfController : IDisposable
     private TrayIcon? tray;
     private EventHandler? openingFrame;
     private int refreshQueued;
+    private bool relayoutQueued;
     private bool disposed;
 
-    public ShelfController(ClipStore store, ClipboardWatcher watcher, PasteService paste, AppSettings settings, SettingsStore settingsStore)
+    /// <param name="startup">サインインしたら起動する設定。見本で動かすときは null（本物の設定を変えない）。</param>
+    public ShelfController(ClipStore store, ClipboardWatcher watcher, PasteService paste, AppSettings settings, SettingsStore settingsStore, StartupRegistration? startup)
     {
         this.store = store;
         this.watcher = watcher;
         this.paste = paste;
         this.settings = settings;
         this.settingsStore = settingsStore;
+        this.startup = startup;
         dispatcher = Dispatcher.CurrentDispatcher;
 
         handle.Clicked += Toggle;
         handle.HoverDwelled += Open;
         handle.OpenOnHover = settings.OpenOnHover;
         lastExternal = CurrentTarget();
-        shelf.OpenOnHoverChanged += SetOpenOnHover;
+        shelf.OpenOnHoverChanged += on => SetOpenOnHover(on);
         shelf.MouseEnter += (_, _) => leaveTimer.Stop();
         shelf.MouseLeave += (_, _) =>
         {
@@ -71,6 +75,10 @@ internal sealed class ShelfController : IDisposable
         leaveTimer.Tick += (_, _) => CloseIfLeft();
         handle.Dragged += OnHandleDragged;
         handle.DragFinished += SaveSettings;
+
+        // 表示倍率の違う画面へ動かすと、WPF がウインドウの大きさを変えてしまうので、置き直す
+        handle.DpiChanged += (_, _) => QueueRelayout();
+        shelf.DpiChanged += (_, _) => QueueRelayout();
         handle.Dropped += OnDropped;
         shelf.DragRequested += OnDragRequested;
         shelf.SaveRequested += OnSaveRequested;
@@ -85,6 +93,7 @@ internal sealed class ShelfController : IDisposable
         shelf.PausedChanged += SetPaused;
         shelf.OpenDataRequested += () => OpenFolder(store.Root);
         shelf.OpenLogsRequested += () => OpenFolder(Log.Folder ?? store.Root);
+        shelf.SettingsRequested += OpenSettings;
         shelf.QuitRequested += () => Application.Current.Shutdown();
     }
 
@@ -217,6 +226,7 @@ internal sealed class ShelfController : IDisposable
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         clock.Stop();
         leaveTimer.Stop();
+        settingsWindow?.Close();
         tray?.Dispose();
         foreground.Dispose();
         toast.Close();
@@ -281,12 +291,32 @@ internal sealed class ShelfController : IDisposable
         }
     }
 
+    /// <summary>あとで（いまの処理が終わってから）置き場所を決め直す。続けて呼ばれても 1 回だけ。</summary>
+    private void QueueRelayout()
+    {
+        if (relayoutQueued || disposed)
+        {
+            return;
+        }
+
+        relayoutQueued = true;
+        dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            relayoutQueued = false;
+            if (!disposed)
+            {
+                Relayout();
+            }
+        });
+    }
+
     private void OnHandleDragged(double position)
     {
         settings.HandlePosition = position;
         var monitor = MonitorInfo.Find(settings.Monitor);
         layout = ShelfLayout.Compute(settings.Edge, monitor.WorkArea, monitor.Scale, position);
         WindowHelper.Place(handle, layout.Handle);
+        RaiseSettingsChanged();
     }
 
     private void SaveSettings()
@@ -301,18 +331,23 @@ internal sealed class ShelfController : IDisposable
         }
     }
 
-    /// <summary>「マウスを乗せるだけで開く」を入り切りする。</summary>
-    private void SetOpenOnHover(bool on)
+    /// <summary>「マウスを乗せるだけで開く」を入り切りする。<paramref name="announce"/> なら知らせも出す（設定の画面からのときは出さない）。</summary>
+    private void SetOpenOnHover(bool on, bool announce = true)
     {
         settings.OpenOnHover = on;
         handle.OpenOnHover = on;
         shelf.ShowOpenOnHover(on);
         SaveSettings();
         Log.Info(on ? "取っ手にマウスを乗せるだけで開くようにしました。" : "取っ手をクリックしたときに開くようにしました。");
-        ShowToast(
-            on ? "取っ手にマウスを乗せるだけで、棚が開くようにしました。棚からマウスを離すと閉じます。" : "取っ手をクリックしたときに、棚が開くようにしました。",
-            ToastKind.Info,
-            TimeSpan.FromSeconds(5));
+        if (announce)
+        {
+            ShowToast(
+                on ? "取っ手にマウスを乗せるだけで、棚が開くようにしました。棚からマウスを離すと閉じます。" : "取っ手をクリックしたときに、棚が開くようにしました。",
+                ToastKind.Info,
+                TimeSpan.FromSeconds(5));
+        }
+
+        RaiseSettingsChanged();
     }
 
     /// <summary>
@@ -351,6 +386,7 @@ internal sealed class ShelfController : IDisposable
         tray?.SetTooltip(TrayTooltip());
         SaveSettings();
         Log.Info(paused ? "記録を止めました。" : "記録を再開しました。");
+        RaiseSettingsChanged();
     }
 
     private void OnStoreChanged(object? sender, EventArgs e)
@@ -780,6 +816,8 @@ internal sealed class ShelfController : IDisposable
     private IReadOnlyList<TrayMenuItem> TrayMenu() =>
     [
         new(1, isOpen ? "棚を閉じる" : "棚を開く", IsDefault: true),
+        new(7, "設定"),
+        TrayMenuItem.Separator,
         new(2, "記録を止める", Checked: settings.Paused),
         new(6, "マウスを乗せるだけで開く", Checked: settings.OpenOnHover),
         TrayMenuItem.Separator,
@@ -811,17 +849,32 @@ internal sealed class ShelfController : IDisposable
             case 6:
                 SetOpenOnHover(!settings.OpenOnHover);
                 break;
+            case 7:
+                OpenSettings();
+                break;
         }
     }
 
-    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => dispatcher.BeginInvoke(Relayout);
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => dispatcher.BeginInvoke(RelayoutAndAnnounce);
 
     private void OnSystemParametersChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SystemParameters.WorkArea))
         {
-            dispatcher.BeginInvoke(Relayout);
+            dispatcher.BeginInvoke(RelayoutAndAnnounce);
         }
+    }
+
+    /// <summary>画面の並びや作業領域が変わった: 置き直して、設定の画面の図も合わせ直す。</summary>
+    private void RelayoutAndAnnounce()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        Relayout();
+        RaiseSettingsChanged();
     }
 
     private static void OpenFolder(string folder)

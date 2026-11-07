@@ -131,6 +131,63 @@ public sealed class AppTests
         ScreenCapture.Save("app-more-menu");
         var menu = await Desktop.WaitForWindowAsync(w => Desktop.ProcessIdOf(w) == (uint)app.ProcessId && Desktop.ClassOf(w).StartsWith("HwndWrapper", StringComparison.Ordinal) && w != shelf && Desktop.TitleOf(w).Length == 0, TimeSpan.FromSeconds(2));
         Assert.NotEqual((nint)0, menu, "「…」のメニューが出ませんでした。");
+
+        // 「設定」を押すと、設定の画面が開いて、棚は閉じる
+        if (await Automation.WaitForCenterAsync(menu, "SettingsItem", TimeSpan.FromSeconds(3)) is not { } item)
+        {
+            throw new AssertionException("「…」のメニューに「設定」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(item.X, item.Y, hoverMilliseconds: 300);
+        var settings = await app.WaitForWindowAsync("Hikidana の設定", TimeSpan.FromSeconds(5));
+        Assert.NotEqual((nint)0, settings, "「設定」を押しても、設定の画面が出ませんでした。");
+        Assert.True(await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(shelf), TimeSpan.FromSeconds(3)), "設定の画面を開いても、棚が閉じませんでした。");
+    }
+
+    [Fact(WindowsOnly = true)]
+    public async Task SettingsMoveTheHandleToTheLeftEdgeAndRememberIt()
+    {
+        using var app = await RunningApp.StartAsync("--settings");
+        var window = await app.WaitForWindowAsync("Hikidana の設定", TimeSpan.FromSeconds(10));
+        Assert.NotEqual((nint)0, window, "--settings で起動しても、設定の画面が出ませんでした。");
+        await Task.Delay(800);
+        Assert.True(TestNative.GetWindowRect(app.Handle, out var before));
+        Console.WriteLine($"       取っ手: ({before.Left}, {before.Top})-({before.Right}, {before.Bottom})");
+
+        // 「左」のボタンを押すと、取っ手がすぐ左の端へ動く
+        if (await Automation.WaitForCenterAsync(window, "EdgeLeft", TimeSpan.FromSeconds(5)) is not { } left)
+        {
+            ScreenCapture.Save("failed-app-settings");
+            throw new AssertionException("設定の画面に「左」のボタンが見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(left.X, left.Y, hoverMilliseconds: 300);
+        TestNative.RECT moved = default;
+        var movedLeft = await Desktop.WaitUntilAsync(() => TestNative.GetWindowRect(app.Handle, out moved) && moved.Right < before.Left - 200, TimeSpan.FromSeconds(3));
+        await Task.Delay(500);
+        ScreenCapture.Save("app-settings-left");
+        Assert.True(movedLeft, $"取っ手が左の端へ動きませんでした（いま ({moved.Left}, {moved.Top})-({moved.Right}, {moved.Bottom})）。");
+        Console.WriteLine($"       動いた取っ手: ({moved.Left}, {moved.Top})-({moved.Right}, {moved.Bottom})");
+
+        // 開き方を「マウスを乗せたとき」にする
+        if (await Automation.WaitForCenterAsync(window, "OpenByHover", TimeSpan.FromSeconds(3)) is not { } hover)
+        {
+            throw new AssertionException("設定の画面に「取っ手にマウスを乗せたとき」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(hover.X, hover.Y, hoverMilliseconds: 300);
+
+        // どちらも設定のファイルに残る（次に起動したときも同じ）
+        string? edge = null;
+        var openOnHover = false;
+        var saved = await Desktop.WaitUntilAsync(
+            () =>
+            {
+                (edge, openOnHover) = DemoSettings();
+                return string.Equals(edge, "left", StringComparison.OrdinalIgnoreCase) && openOnHover;
+            },
+            TimeSpan.FromSeconds(3));
+        Assert.True(saved, $"設定のファイルに残っていません（edge: {edge}、openOnHover: {openOnHover}）。");
     }
 
     /// <summary>棚のいちばん上のカードの、画像のあたり（本当の画素）。</summary>
@@ -141,6 +198,24 @@ public sealed class AppTests
         var point = (rect.Left + ((rect.Right - rect.Left) / 2), rect.Top + (int)(230 * scale));
         Console.WriteLine($"       棚: ({rect.Left}, {rect.Top})-({rect.Right}, {rect.Bottom})、カード {point}");
         return point;
+    }
+
+    /// <summary>見本の設定のファイルの、棚の端と「マウスを乗せるだけで開く」。読めなければ (null, false)。</summary>
+    private static (string? Edge, bool OpenOnHover) DemoSettings()
+    {
+        try
+        {
+            using var stream = new FileStream(Path.Combine(DemoRoot, "settings.json"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var document = JsonDocument.Parse(stream);
+            var root = document.RootElement;
+            var edge = root.TryGetProperty("edge", out var e) ? e.GetString() : null;
+            var hover = root.TryGetProperty("openOnHover", out var h) && h.ValueKind == JsonValueKind.True;
+            return (edge, hover);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException)
+        {
+            return (null, false);
+        }
     }
 
     /// <summary>見本の棚にしまってあるものの見出し（アプリが書いている途中でも読めるよう、索引のファイルを直接読む）。</summary>

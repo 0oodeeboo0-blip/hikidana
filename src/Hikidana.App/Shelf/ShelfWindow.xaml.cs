@@ -74,6 +74,9 @@ public partial class ShelfWindow : Window
 
     public event Action? QuitRequested;
 
+    /// <summary>「…」の「設定」。</summary>
+    public event Action? SettingsRequested;
+
     /// <summary>「マウスを乗せるだけで開く」を入り切りした。</summary>
     public event Action<bool>? OpenOnHoverChanged;
 
@@ -591,4 +594,6 @@ public partial class ShelfWindow : Window
     private void OpenLogs_Click(object sender, RoutedEventArgs e) => OpenLogsRequested?.Invoke();
 
     private void Quit_Click(object sender, RoutedEventArgs e) => QuitRequested?.Invoke();
+
+    private void Settings_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
 }

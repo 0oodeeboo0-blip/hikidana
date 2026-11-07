@@ -108,14 +108,7 @@ public partial class App : Application
         var settings = settingsStore.Load();
         options.ApplyTo(settings);
 
-        // Windows 11 の Fluent（スクロールバーやメニュー）と、棚の色（案A）
-        ThemeMode = settings.Theme switch
-        {
-            "light" => ThemeMode.Light,
-            "dark" => ThemeMode.Dark,
-            _ => ThemeMode.System,
-        };
-        Palette.Apply(this, settings.Theme);
+        ApplyTheme(settings.Theme);
         Palette.Watch(this);
 
         var clock = new DemoClock();
@@ -132,8 +125,30 @@ public partial class App : Application
         recorder.Failed += ex => Log.Error("コピーしたものを、しまえませんでした。", ex);
         var paste = new PasteService(store, watcher) { MoveToTop = settings.MoveToTopOnPaste };
 
-        controller = new ShelfController(store, watcher, paste, settings, settingsStore);
+        // サインインしたら起動する設定（見本のときは、本物の設定に触れない）
+        StartupRegistration? startup = null;
+        if (!options.Demo)
+        {
+            startup = new StartupRegistration();
+            try
+            {
+                if (Environment.ProcessPath is { } exe && startup.Refresh(exe))
+                {
+                    Log.Info($"サインインしたときに起動する exe を、いまの場所に直しました（{startup.Command}）。");
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+            {
+                Log.Warn("サインインしたときの起動の設定を確かめられませんでした。", ex);
+            }
+        }
+
+        controller = new ShelfController(store, watcher, paste, settings, settingsStore, startup);
         controller.Start(open: options.Open);
+        if (options.Settings)
+        {
+            controller.OpenSettings();
+        }
 
         openSignal = new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\{(options.Demo ? "Hikidana.Demo" : "Hikidana")}.Open");
         openWait = ThreadPool.RegisterWaitForSingleObject(
@@ -143,6 +158,26 @@ public partial class App : Application
             Timeout.Infinite,
             executeOnlyOnce: false);
         Log.Info($"用意ができました（しまってあるもの {store.Items.Count} 件、しまう場所 {store.Root}）。");
+    }
+
+    /// <summary>
+    /// 画面の色を入れる: Windows 11 の Fluent（標準の部品、スクロールバー、メニュー）と、棚の色（案A）。
+    /// <paramref name="theme"/> は system・light・dark。設定の画面で変えたときにも呼ぶ。
+    /// </summary>
+    internal static void ApplyTheme(string theme)
+    {
+        if (Current is not App app)
+        {
+            return;
+        }
+
+        app.ThemeMode = theme switch
+        {
+            "light" => ThemeMode.Light,
+            "dark" => ThemeMode.Dark,
+            _ => ThemeMode.System,
+        };
+        Palette.Apply(app, theme);
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

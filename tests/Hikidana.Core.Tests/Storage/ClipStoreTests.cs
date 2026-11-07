@@ -134,6 +134,39 @@ public sealed class ClipStoreTests : IDisposable
     }
 
     [Fact]
+    public void LoweringTheLimitRemovesTheOldestAtOnce()
+    {
+        var store = NewStore();
+        var pinned = store.Add(Text("ピン留め"))!;
+        store.SetPinned(pinned.Id, true);
+        var ids = new List<string>();
+        for (var i = 0; i < 6; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(10));
+            ids.Add(store.Add(Text($"テキスト {i}"))!.Id);
+        }
+
+        var changed = 0;
+        store.Changed += (_, _) => changed++;
+        Assert.Equal(4, store.CountOverLimit(2), "ピン留めは数えない。");
+        Assert.Equal(0, store.CountOverLimit(10));
+        Assert.Equal(4, store.SetMaxItems(2));
+        Assert.Equal(1, changed);
+        Assert.Equal(2, store.Options.MaxItems);
+        Assert.SequenceEqual(new[] { ids[5], ids[4], pinned.Id }, store.Items.Select(c => c.Id));
+        Assert.False(Directory.Exists(Path.Combine(root, "clips", ids[0])));
+
+        // 保存されている（読み直しても同じ）
+        var again = NewStore(new ClipStoreOptions { MaxItems = 2 });
+        Assert.Equal(3, again.Items.Count);
+
+        // 上げるときは何も消さず、知らせもしない
+        Assert.Equal(0, store.SetMaxItems(100));
+        Assert.Equal(1, changed);
+        Assert.Equal(100, store.Options.MaxItems);
+    }
+
+    [Fact]
     public void OldItemsExpire()
     {
         var store = NewStore(new ClipStoreOptions { MaxAge = TimeSpan.FromDays(7) });

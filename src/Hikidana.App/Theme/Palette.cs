@@ -56,6 +56,19 @@ internal static class Palette
             Set(resources, "Hkd.InfoBackground", 0xFF2C2C2C);
             Set(resources, "Hkd.HandleTab", 0xFF2C2C2C);
             Set(resources, "Hkd.HandleStripEdge", 0x66000000);
+
+            // 設定の画面（Windows 11 の設定と同じ考え方の色）
+            Set(resources, "Hkd.SettingsBackground", 0xFF202020);
+            Set(resources, "Hkd.ControlStrongStroke", 0x8BFFFFFF);
+            Set(resources, "Hkd.ToggleFillOff", 0x19000000);
+            Set(resources, "Hkd.ToggleFillOffHover", 0x0BFFFFFF);
+            Set(resources, "Hkd.ToggleKnobOff", 0xC5FFFFFF);
+            Set(resources, "Hkd.FocusStroke", 0xFFFFFFFF);
+            Set(resources, "Hkd.ScreenFill", 0x12FFFFFF);
+            Set(resources, "Hkd.ScreenStroke", 0x33FFFFFF);
+            Set(resources, "Hkd.ScreenTaskbar", 0x1FFFFFFF);
+            Set(resources, "Hkd.MiniPanel", 0xFF3A3A3A);
+            Set(resources, "Hkd.MiniCard", 0x24FFFFFF);
         }
         else
         {
@@ -82,11 +95,26 @@ internal static class Palette
             Set(resources, "Hkd.InfoBackground", 0xFFFBFBFB);
             Set(resources, "Hkd.HandleTab", 0xFFFBFBFB);
             Set(resources, "Hkd.HandleStripEdge", 0x99FFFFFF);
+
+            Set(resources, "Hkd.SettingsBackground", 0xFFF3F3F3);
+            Set(resources, "Hkd.ControlStrongStroke", 0x72000000);
+            Set(resources, "Hkd.ToggleFillOff", 0x06000000);
+            Set(resources, "Hkd.ToggleFillOffHover", 0x0F000000);
+            Set(resources, "Hkd.ToggleKnobOff", 0x9E000000);
+            Set(resources, "Hkd.FocusStroke", 0xE4000000);
+            Set(resources, "Hkd.ScreenFill", 0x0D000000);
+            Set(resources, "Hkd.ScreenStroke", 0x2E000000);
+            Set(resources, "Hkd.ScreenTaskbar", 0x17000000);
+            Set(resources, "Hkd.MiniPanel", 0xFFFFFFFF);
+            Set(resources, "Hkd.MiniCard", 0x14000000);
         }
 
         Set(resources, "Hkd.Accent", accent);
         Set(resources, "Hkd.AccentText", accent);
         Set(resources, "Hkd.OnAccent", IsDark ? Colors.Black : Colors.White);
+        Set(resources, "Hkd.AccentHover", Color.FromArgb(0xE6, accent.R, accent.G, accent.B));
+        Set(resources, "Hkd.AccentPressed", Color.FromArgb(0xCC, accent.R, accent.G, accent.B));
+        Set(resources, "Hkd.AccentSoft", Color.FromArgb(0x2E, accent.R, accent.G, accent.B));
         Changed?.Invoke();
     }
 

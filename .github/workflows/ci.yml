@@ -137,7 +137,9 @@ jobs:
             @{ Name = 'dark'; Args = '--demo --open --theme dark' },
             @{ Name = 'left-dark'; Args = '--demo --open --theme dark --edge left' },
             @{ Name = 'top-light'; Args = '--demo --open --theme light --edge top --position 0.7' },
-            @{ Name = 'closed-light'; Args = '--demo --theme light' }
+            @{ Name = 'closed-light'; Args = '--demo --theme light' },
+            @{ Name = 'settings-light'; Args = '--demo --settings --theme light' },
+            @{ Name = 'settings-dark'; Args = '--demo --settings --theme dark --edge left' }
           )
           # マウスを棚から離しておく（カードの上にあると、マウスを乗せたときの見た目になる）
           [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(600, 700)

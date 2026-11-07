@@ -43,6 +43,9 @@
 - csproj などの XML のコメントに「--」を書かない（読み込みエラーになる）。XAML のコメントも同じ。
 - XAML のパスのデータ（`Path.Data`）は、絶対座標の M・L・C・A・Z だけで書く。
 - WPF のプロジェクトでは `System.IO.Path` と `System.Windows.Shapes.Path` がぶつかる。コードでは片方をフルネームで書く。
+  また WPF のプロジェクトでは `System.IO` が暗黙の using に入らないので、`Path`・`File`・`IOException` を使うファイルには `using System.IO;` を書く。
+- C# の文字列の `\uE718` のような書き方は、シェルのヒアドキュメントで書くと実際の文字に変わることがある。Python で書くか、書いたあとに確かめる
+  （XAML では `&#xE718;` と書く）。
 
 ## 守ること
 

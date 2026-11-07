@@ -22,7 +22,7 @@ public sealed class AppTests
 
         var page = await ChromiumPage.SharedAsync();
         var start = new ProcessStartInfo(exe) { UseShellExecute = false };
-        foreach (var argument in new[] { "--demo", "--open", "--theme", "light" })
+        foreach (var argument in new[] { "--demo", "--theme", "light" })
         {
             start.ArgumentList.Add(argument);
         }
@@ -30,19 +30,36 @@ public sealed class AppTests
         using var app = Process.Start(start) ?? throw new AssertionException("アプリを起動できませんでした。");
         try
         {
-            var shelf = await Desktop.WaitForWindowAsync(w => Desktop.ProcessIdOf(w) == (uint)app.Id && Desktop.TitleOf(w) == "Hikidana", TimeSpan.FromSeconds(30));
-            if (shelf == 0)
+            bool Mine(nint window, string title) => Desktop.ProcessIdOf(window) == (uint)app.Id && Desktop.TitleOf(window) == title;
+            var handle = await Desktop.WaitForWindowAsync(w => Mine(w, "Hikidana の取っ手"), TimeSpan.FromSeconds(30));
+            if (handle == 0)
             {
                 ScreenCapture.Save("failed-app-start");
-                throw new AssertionException($"棚が出てきませんでした（アプリは{(app.HasExited ? $"終了コード {app.ExitCode} で終わっています" : "動いています")}）。");
+                throw new AssertionException($"取っ手が出てきませんでした（アプリは{(app.HasExited ? $"終了コード {app.ExitCode} で終わっています" : "動いています")}）。");
             }
 
             // 利用者が ChatGPT の入力欄で作業している様子: Edge を前面にする
-            await Task.Delay(1500);
+            await Task.Delay(1000);
             InputSender.TapMaskKey();
             TestNative.SetForegroundWindow(page.Window);
             Assert.True(await Desktop.WaitUntilAsync(() => TestNative.GetForegroundWindow() == page.Window, TimeSpan.FromSeconds(5)), $"Edge を前面にできませんでした（前面: {Desktop.ForegroundDescription()}）。");
-            ScreenCapture.Save("app-before-click");
+
+            // 画面の端の取っ手にマウスを乗せて、クリックする
+            Assert.True(TestNative.GetWindowRect(handle, out var handleRect));
+            var handleX = handleRect.Right - 3;
+            var handleY = (handleRect.Top + handleRect.Bottom) / 2;
+            Console.WriteLine($"       取っ手: ({handleRect.Left}, {handleRect.Top})-({handleRect.Right}, {handleRect.Bottom})");
+            await ClickAsync(handleX, handleY, hoverMilliseconds: 600);
+            var shelf = await Desktop.WaitForWindowAsync(w => Mine(w, "Hikidana"), TimeSpan.FromSeconds(5));
+            if (shelf == 0)
+            {
+                ScreenCapture.Save("failed-app-open");
+                throw new AssertionException($"取っ手をクリックしても、棚が開きませんでした（前面: {Desktop.ForegroundDescription()}）。");
+            }
+
+            Assert.Equal(page.Window, TestNative.GetForegroundWindow(), $"棚を開いたら前面が変わりました: {Desktop.ForegroundDescription()}");
+            await Task.Delay(500);
+            ScreenCapture.Save("app-shelf-open");
 
             // いちばん上のカード（見本のスクリーンショット、1600×900）の画像のあたりをクリックする
             Assert.True(TestNative.GetWindowRect(shelf, out var rect));
@@ -50,11 +67,7 @@ public sealed class AppTests
             var x = rect.Left + (int)((rect.Right - rect.Left) / 2.0);
             var y = rect.Top + (int)(150 * scale);
             Console.WriteLine($"       棚: ({rect.Left}, {rect.Top})-({rect.Right}, {rect.Bottom})、クリック ({x}, {y})");
-            TestNative.SetCursorPos(x, y);
-            await Task.Delay(400);
-            TestNative.mouse_event(TestNative.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-            await Task.Delay(60);
-            TestNative.mouse_event(TestNative.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+            await ClickAsync(x, y, hoverMilliseconds: 400);
 
             var paste = await page.NextPasteAsync(15000);
             await Task.Delay(300);
@@ -80,5 +93,14 @@ public sealed class AppTests
                 app.WaitForExit(5000);
             }
         }
+    }
+
+    private static async Task ClickAsync(int x, int y, int hoverMilliseconds)
+    {
+        TestNative.SetCursorPos(x, y);
+        await Task.Delay(hoverMilliseconds);
+        TestNative.mouse_event(TestNative.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+        await Task.Delay(60);
+        TestNative.mouse_event(TestNative.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
     }
 }

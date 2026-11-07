@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -95,7 +96,7 @@ internal static class DemoData
         dc.DrawRectangle(Solid(0xECECF1), null, new Rect(0, 0, 300, height));
         for (var i = 0; i < 9; i++)
         {
-            dc.DrawRoundedRectangle(Solid(i == 1 ? 0xDADAE3 : 0xE3E3EA), null, new Rect(20, 96 + (i * 52), 260 - (i % 3 * 40), 34), 8, 8);
+            dc.DrawRoundedRectangle(Solid(i == 1 ? 0xDADAE3u : 0xE3E3EAu), null, new Rect(20, 96 + (i * 52), 260 - (i % 3 * 40), 34), 8, 8);
         }
 
         DrawText(dc, "新しいチャット", 28, 34, 22, 0x202123, bold: true);

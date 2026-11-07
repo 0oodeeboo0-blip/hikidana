@@ -90,6 +90,13 @@ internal sealed class ShelfController : IDisposable
         {
             Open();
         }
+        else if (!settings.WelcomeShown)
+        {
+            // 初めてのとき: 取っ手の場所を知らせる
+            settings.WelcomeShown = true;
+            SaveSettings();
+            ShowToast(WelcomeMessage(settings.Edge), ToastKind.Info, TimeSpan.FromSeconds(10));
+        }
 
         Log.Info($"棚を用意しました（{settings.Edge}、位置 {settings.HandlePosition:0.00}、作業領域 {layout.WorkArea}、拡大率 {layout.Scale:0.##}）");
     }
@@ -104,6 +111,7 @@ internal sealed class ShelfController : IDisposable
         Relayout();
         UpdateTimes();
         shelf.ScrollToTop();
+        toast.Hide();
         shelf.Show();
         handle.Hide();
         isOpen = true;
@@ -408,6 +416,18 @@ internal sealed class ShelfController : IDisposable
         }
 
         toast.Present(message, kind, layout, isOpen, duration, actionText, action);
+    }
+
+    private static string WelcomeMessage(ShelfEdge edge)
+    {
+        var where = edge switch
+        {
+            ShelfEdge.Left => "左端",
+            ShelfEdge.Top => "上端",
+            ShelfEdge.Bottom => "下端",
+            _ => "右端",
+        };
+        return $"Hikidana が動いています。画面の{where}の細い線（取っ手）をクリックすると、コピーしたものやスクリーンショットの棚が開きます。";
     }
 
     private void OnForegroundChanged(nint window)

@@ -84,6 +84,8 @@ public sealed class AppTests
             Assert.True(await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(shelf), TimeSpan.FromSeconds(3)), "棚が閉じていません。");
             var toast = await Desktop.WaitForWindowAsync(w => Desktop.ProcessIdOf(w) == (uint)app.Id && Desktop.TitleOf(w) == "Hikidana の知らせ", TimeSpan.FromSeconds(3));
             Assert.NotEqual((nint)0, toast, "知らせが出ていません。");
+            await Task.Delay(800);
+            ScreenCapture.Save("app-toast");
         }
         finally
         {

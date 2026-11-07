@@ -36,6 +36,9 @@ public sealed class AppSettings
     /// <summary>記録しないアプリ（実行ファイルの名前）。</summary>
     public List<string> ExcludedApps { get; set; } = [];
 
+    /// <summary>初めて起動したときの案内を出した。</summary>
+    public bool WelcomeShown { get; set; }
+
     /// <summary>おかしな値を直す。</summary>
     public AppSettings Normalize()
     {

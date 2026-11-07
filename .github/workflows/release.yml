@@ -1,0 +1,87 @@
+name: Release
+
+# v で始まるタグ（例: v0.1.0）を push するか、Actions の画面で「Run workflow」を押して版を入れると、
+# 配布用の zip を作って GitHub の Releases に置く（タグが無ければ、いまの main に付ける）。
+# 「-」を含む版（例: 0.1.0-beta.1）は先行版にする。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '出す版（例: 0.1.0）'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 配布用の zip を Releases に置く
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 版を決める
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { 'v' + '${{ inputs.version }}'.Trim().TrimStart('v') } else { '${{ github.ref_name }}' }
+          $version = $tag.TrimStart('v')
+          $core = ($version -split '[-+]')[0]
+          if ($core -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "版の形が違います（0.1.0 のように入れてください）: $tag"
+            exit 1
+          }
+          "TAG=$tag" >> $env:GITHUB_ENV
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "CORE_VERSION=$core" >> $env:GITHUB_ENV
+
+      - name: 発行
+        # テストは、main に push したときの CI で済ませてある
+        run: dotnet publish src/Hikidana.App/Hikidana.App.csproj -c Release -r win-x64 -p:Version=${{ env.VERSION }} -o publish/Hikidana
+
+      - name: 起動テスト
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath (Join-Path $PWD 'publish\Hikidana\Hikidana.exe') -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) {
+            Write-Error "アプリが起動直後に終了しました（終了コード $($p.ExitCode)）"
+            exit 1
+          }
+          Stop-Process -Id $p.Id -Force
+
+      - name: zip にまとめる
+        shell: pwsh
+        run: |
+          $zip = "Hikidana-$env:VERSION-win-x64.zip"
+          Compress-Archive -Path publish\Hikidana -DestinationPath $zip
+          "ZIP=$zip" >> $env:GITHUB_ENV
+          Write-Host "$zip: $((Get-Item $zip).Length) バイト"
+
+      - name: Releases に置く
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $notes = "docs/releases/$env:CORE_VERSION.md"
+          if (-not (Test-Path $notes)) {
+            $notes = 'docs/releases/default.md'
+          }
+          $PSNativeCommandUseErrorActionPreference = $false
+          # 同じ版がもうあれば、zip だけ置き直す
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG $env:ZIP --clobber
+            exit $LASTEXITCODE
+          }
+          $options = @('--title', "Hikidana $env:VERSION", '--notes-file', $notes, '--target', $env:GITHUB_SHA)
+          if ($env:VERSION.Contains('-')) {
+            $options += '--prerelease'
+          }
+          gh release create $env:TAG $env:ZIP @options

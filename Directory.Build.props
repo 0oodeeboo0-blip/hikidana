@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <Product>Hikidana</Product>
+    <!-- 段階 0（準備）。ビルドしたコミットが「0.1.0+コミット」の形で付く。Releases の版はタグ（v0.1.0）で決まる -->
+    <Version>0.1.0</Version>
+    <Company>Hikidana</Company>
+    <Copyright>Copyright (c) 2026 Hikidana</Copyright>
+    <NeutralLanguage>ja-JP</NeutralLanguage>
+  </PropertyGroup>
+</Project>

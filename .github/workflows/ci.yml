@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: 仕組みのテスト (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: テスト
+        run: dotnet run --project tests/Hikidana.Core.Tests/Hikidana.Core.Tests.csproj -c Release
+
+  app:
+    name: アプリのビルド (Windows x64)
+    runs-on: windows-latest
+    permissions:
+      contents: write # 画面写真を screenshots ブランチに置くため
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: テスト（仕組み）
+        run: dotnet run --project tests/Hikidana.Core.Tests/Hikidana.Core.Tests.csproj -c Release
+
+      - name: 発行
+        run: dotnet publish src/Hikidana.App/Hikidana.App.csproj -c Release -r win-x64 -o publish/Hikidana-win-x64
+
+      - name: 成果物を保存
+        uses: actions/upload-artifact@v6
+        with:
+          name: Hikidana-win-x64
+          path: publish/Hikidana-win-x64
+          if-no-files-found: error
+
+      # ランナーの画面は 1024x768 なので広げる
+      # （Windows PowerShell 5.1 は UTF-8 の日本語を読み違えるので、日本語を書くステップは pwsh で動かす）
+      - name: 画面の解像度を上げる
+        shell: pwsh
+        run: |
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class Display
+          {
+              [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+              public struct DEVMODE
+              {
+                  [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+                  public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+                  public int dmFields, dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+                  public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+                  [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+                  public short dmLogPixels;
+                  public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+                  public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+              }
+
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+              private static extern bool EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
+
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+              private static extern int ChangeDisplaySettings(ref DEVMODE devMode, int flags);
+
+              public static int Set(int width, int height)
+              {
+                  var mode = new DEVMODE();
+                  mode.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+                  if (!EnumDisplaySettings(null, -1, ref mode))
+                      return -100;
+                  mode.dmPelsWidth = width;
+                  mode.dmPelsHeight = height;
+                  mode.dmFields = 0x80000 | 0x100000;
+                  return ChangeDisplaySettings(ref mode, 0);
+              }
+          }
+          '@
+          Write-Host "ChangeDisplaySettings: $([Display]::Set(1920, 1080))（0 なら成功）"
+          Add-Type -AssemblyName System.Windows.Forms
+          Write-Host "画面: $([System.Windows.Forms.Screen]::PrimaryScreen.Bounds)"
+
+      # 起動してすぐ落ちないかを確かめ、画面全体を撮る（ライトとダーク）
+      - name: 起動テストと画面写真
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'publish\Hikidana-win-x64\Hikidana.exe'
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          foreach ($theme in @('light', 'dark')) {
+            $p = Start-Process -FilePath $exe -ArgumentList "--theme $theme" -PassThru
+            Start-Sleep -Seconds 12
+            if ($p.HasExited) {
+              Write-Error "アプリが起動直後に終了しました（$theme、終了コード $($p.ExitCode)）"
+              exit 1
+            }
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $bmp.Save((Join-Path $PWD "screenshots\startup-$theme.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose()
+            $bmp.Dispose()
+            Stop-Process -Id $p.Id -Force
+            Start-Sleep -Seconds 2
+          }
+
+      - name: 画面写真を保存
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: screenshots
+          path: screenshots
+          if-no-files-found: ignore
+
+      # main の最新の画面写真を screenshots ブランチに置く（毎回上書き）。GitHub 上でも見られる。
+      - name: 画面写真を screenshots ブランチに置く
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if (-not (Test-Path screenshots)) {
+            Write-Host '画面写真がありません'
+            exit 0
+          }
+          $dir = Join-Path $env:RUNNER_TEMP 'screenshots-branch'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item screenshots\* $dir
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
+          $lines = @('# 画面写真', '', "CI が自動で撮った、main の最新（$sha）の画面写真です。", '')
+          foreach ($file in Get-ChildItem $dir -Filter *.png | Sort-Object Name) {
+            $lines += "## $($file.BaseName)", '', "![$($file.BaseName)]($($file.Name))", ''
+          }
+          Set-Content -Path (Join-Path $dir 'README.md') -Encoding utf8 -Value $lines
+          Set-Location $dir
+          git init -q -b screenshots
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -q -m "Screenshots for $sha"
+          git push -q -f "https://x-access-token:$env:GH_TOKEN@github.com/$env:GITHUB_REPOSITORY.git" screenshots

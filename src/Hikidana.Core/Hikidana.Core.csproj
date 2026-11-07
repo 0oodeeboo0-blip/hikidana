@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- クリップボードの中身の見分け方・保存・貼り付けの決まり。画面にも Windows にも依存しないので、Linux でもテストできる -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Hikidana.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

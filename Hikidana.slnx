@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hikidana.Core/Hikidana.Core.csproj" />
+    <Project Path="src/Hikidana.App/Hikidana.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hikidana.Testing/Hikidana.Testing.csproj" />
+    <Project Path="tests/Hikidana.Core.Tests/Hikidana.Core.Tests.csproj" />
+  </Folder>
+</Solution>

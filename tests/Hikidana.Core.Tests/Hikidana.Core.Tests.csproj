@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- dotnet run でこのプロジェクトを動かすと全部のテスト。名前で絞るときは、末尾に filter と名前の一部を付ける（CLAUDE.md） -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hikidana.Testing\Hikidana.Testing.csproj" />
+    <ProjectReference Include="..\..\src\Hikidana.Core\Hikidana.Core.csproj" />
+  </ItemGroup>
+
+</Project>

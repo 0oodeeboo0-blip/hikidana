@@ -51,6 +51,9 @@ public sealed class AppSettings
     /// <summary>棚に何か入ったら、取っ手から印を少し出して知らせる。</summary>
     public bool SignalOnCapture { get; set; } = true;
 
+    /// <summary>新しい版が出ていないか、ときどき確かめる（GitHub の Releases）。</summary>
+    public bool CheckForUpdates { get; set; } = true;
+
     /// <summary>記録しないアプリ（実行ファイルの名前）。</summary>
     public List<string> ExcludedApps { get; set; } = [];
 

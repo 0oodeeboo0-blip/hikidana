@@ -234,6 +234,33 @@ internal sealed partial class ShelfController : ISettingsHost
         RaiseSettingsChanged();
     }
 
+    Hikidana.Core.Updates.ReleaseInfo? ISettingsHost.AvailableUpdate => updates?.Available;
+
+    string ISettingsHost.UpdateStatus => updates switch
+    {
+        null => "見本で動かしているので、新しい版は確かめません。",
+        _ when installing => "新しい版に入れ替えています…",
+        { Available: { } release } => $"新しい版 {release.DisplayVersion} があります。",
+        { LastChecked: null } => "新しい版は、まだ確かめていません。",
+        { LastCheckFailed: true } => "新しい版を確かめられませんでした（インターネットにつながっているか確かめてください）。",
+        { LastChecked: { } at } => $"いまの版が最新です（{at:M月d日 H:mm} に確かめました）。",
+    };
+
+    Task ISettingsHost.CheckForUpdateAsync() => CheckForUpdateAsync(announce: false);
+
+    void ISettingsHost.InstallUpdate() => InstallUpdate();
+
+    void ISettingsHost.SetCheckForUpdates(bool on)
+    {
+        settings.CheckForUpdates = on;
+        SaveSettings();
+        RaiseSettingsChanged();
+        if (on)
+        {
+            _ = CheckForUpdateAsync(announce: true);
+        }
+    }
+
     void ISettingsHost.Clear(ClearScope scope) => Clear(scope);
 
     bool ISettingsHost.SetStartWithWindows(bool on)

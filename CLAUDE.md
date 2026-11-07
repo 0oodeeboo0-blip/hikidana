@@ -44,6 +44,10 @@
   - `app-*.png`: 発行したアプリで、取っ手から棚を開き、カードをクリックして Edge に貼った様子。
   - `startup-*.png`: 見本の中身で棚を開いた様子（ライト・ダーク・左の端・上の端・閉じた状態）と、設定の画面（`startup-settings-*`）。
 - アプリのビルド結果は、利用者が Actions の成果物 `Hikidana-win-x64` からダウンロードする（GitHub へのログインが要る）。
+- 新しい版を届ける: `Directory.Build.props` の `Version` を上げて main に push すると、CI（Windows のジョブの最後）が
+  その版がまだ Releases に無ければ zip と SHA-256 を置く（説明は `docs/releases/<版>.md`）。アプリは Releases の latest を
+  6 時間ごとに確かめて知らせ、「入れ替える」で exe を入れ替えて起動し直す（`Core/Updates`、`App/Updates`。リポジトリは公開）。
+  版を上げない push は、利用者のアプリには届かない（Actions の成果物だけ）。
 - 配布: `v0.1.0` のようなタグを push するか、Actions の「Release」で「Run workflow」を押して版を入れると、
   `.github/workflows/release.yml` が zip を作って GitHub の Releases に置く
   （説明は `docs/releases/<版>.md`、無ければ `docs/releases/default.md`。「-」を含む版は先行版）。

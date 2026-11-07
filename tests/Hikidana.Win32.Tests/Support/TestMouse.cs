@@ -23,6 +23,13 @@ internal static class TestMouse
         mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
     }
 
+    /// <summary>ホイールを回す（<paramref name="notches"/> が負なら下へ）。</summary>
+    public static void Wheel(int x, int y, int notches)
+    {
+        MoveTo(x, y);
+        mouse_event(MOUSEEVENTF_WHEEL, 0, 0, unchecked((uint)(notches * 120)), 0);
+    }
+
     /// <summary>押したまま、少しずつ動かして離す。</summary>
     public static async Task DragAsync((int X, int Y) from, (int X, int Y) to, int steps = 30, int stepMilliseconds = 25, int holdMilliseconds = 600)
     {

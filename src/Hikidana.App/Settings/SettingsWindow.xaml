@@ -371,13 +371,29 @@
             <StackPanel VerticalAlignment="Center">
               <TextBlock Text="Hikidana" FontWeight="SemiBold" />
               <TextBlock x:Name="VersionText" Style="{StaticResource SettingHint}" Margin="0,0,0,0" />
+              <TextBlock x:Name="UpdateStatusText" Style="{StaticResource SettingHint}" />
             </StackPanel>
           </DockPanel>
           <WrapPanel Margin="46,12,0,0">
+            <Button x:Name="InstallUpdateButton" Style="{StaticResource AccentButton}" Margin="0,0,8,6" Visibility="Collapsed"
+                    Content="新しい版に入れ替える" Click="InstallUpdate_Click" />
+            <Button x:Name="CheckUpdateButton" Content="新しい版を確かめる" Margin="0,0,8,6" Padding="12,5" Click="CheckUpdate_Click" />
             <Button Content="しまってある場所を開く" Margin="0,0,8,6" Padding="12,5" Click="OpenData_Click" />
             <Button Content="記録（ログ）の場所を開く" Margin="0,0,8,6" Padding="12,5" Click="OpenLogs_Click" />
           </WrapPanel>
         </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource SettingCard}">
+        <DockPanel>
+          <CheckBox x:Name="UpdateSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                    AutomationProperties.Name="新しい版を自動で確かめる" Click="UpdateSwitch_Click" />
+          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE895;" />
+          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+            <TextBlock Style="{StaticResource SettingName}" Text="新しい版を自動で確かめる" />
+            <TextBlock Style="{StaticResource SettingHint}" Text="新しい版が出たら知らせます。ボタン 1 つで入れ替えて、起動し直します（棚の中身と設定はそのままです）。" />
+          </StackPanel>
+        </DockPanel>
       </Border>
     </StackPanel>
   </ScrollViewer>

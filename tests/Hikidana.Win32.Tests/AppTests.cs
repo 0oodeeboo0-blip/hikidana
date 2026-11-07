@@ -291,7 +291,13 @@ public sealed class AppTests
         // スクリーンショットだけが消えて、ほかは残る。知らせが出る
         var cleared = await Desktop.WaitUntilAsync(() => DemoClips() is { Count: > 0 } now && now.All(c => c.Kind != "Screenshot"), TimeSpan.FromSeconds(3));
         var after = DemoClips();
-        Assert.True(cleared, $"スクリーンショットが消えていません: {string.Join(", ", after)}");
+        if (!cleared)
+        {
+            ScreenCapture.Save("failed-app-clear");
+            PrintDemoLog();
+        }
+
+        Assert.True(cleared, $"スクリーンショットが消えていません（前面: {Desktop.ForegroundDescription()}、棚: {TestNative.IsWindowVisible(shelf)}）: {string.Join(", ", after)}");
         Assert.Equal(before.Count - 1, after.Count, string.Join(", ", after));
         var toast = await app.WaitForWindowAsync("Hikidana の知らせ", TimeSpan.FromSeconds(3));
         Assert.NotEqual((nint)0, toast, "知らせが出ていません。");
@@ -374,9 +380,10 @@ public sealed class AppTests
         Assert.NotEqual((nint)0, window, "--settings で起動しても、設定の画面が出ませんでした。");
         await Task.Delay(800);
 
-        // 「色」の一覧を開いて「ダーク」を選ぶ
-        if (await Automation.WaitForCenterAsync(window, "ThemeBox", TimeSpan.FromSeconds(5)) is not { } box)
+        // 「色」の一覧が見えるところまで下へ送ってから、開いて「ダーク」を選ぶ
+        if (await ScrollIntoViewAsync(window, "ThemeBox") is not { } box)
         {
+            ScreenCapture.Save("failed-app-settings-theme");
             throw new AssertionException("設定の画面に「色」の一覧が見つかりません。");
         }
 
@@ -409,6 +416,56 @@ public sealed class AppTests
         await Task.Delay(600);
         ScreenCapture.Save("app-shelf-after-dark-switch");
         Assert.False(app.HasExited, "色を変えたあと、アプリが終了しました。");
+    }
+
+    /// <summary>
+    /// 設定の画面などで、部品が窓の中に見えるまでホイールで下へ送り、その真ん中（本当の画素）を返す。見つからなければ null。
+    /// </summary>
+    private static async Task<(int X, int Y)?> ScrollIntoViewAsync(nint window, string automationId)
+    {
+        Assert.True(TestNative.GetWindowRect(window, out var frame));
+        for (var i = 0; i < 12; i++)
+        {
+            if (Automation.FindBounds(window, automationId) is { } rect && rect.Bottom > rect.Top)
+            {
+                if (rect.Top >= frame.Top + 40 && rect.Bottom <= frame.Bottom - 12)
+                {
+                    return ((rect.Left + rect.Right) / 2, (rect.Top + rect.Bottom) / 2);
+                }
+
+                TestMouse.Wheel((frame.Left + frame.Right) / 2, (frame.Top + frame.Bottom) / 2, rect.Top < frame.Top + 40 ? 2 : -2);
+            }
+
+            await Task.Delay(250);
+        }
+
+        return null;
+    }
+
+    /// <summary>見本の記録（ログ）の終わりのほうを出す（失敗したときに、アプリの中で何が起きたかを見るため）。</summary>
+    private static void PrintDemoLog()
+    {
+        try
+        {
+            var folder = Path.Combine(DemoRoot, "logs");
+            var latest = Directory.Exists(folder) ? Directory.GetFiles(folder).OrderBy(File.GetLastWriteTimeUtc).LastOrDefault() : null;
+            if (latest is null)
+            {
+                Console.WriteLine("       （見本の記録がありません）");
+                return;
+            }
+
+            using var stream = new FileStream(latest, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            foreach (var line in reader.ReadToEnd().Split('\n').TakeLast(30))
+            {
+                Console.WriteLine($"       記録: {line.TrimEnd()}");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.WriteLine($"       （見本の記録を読めません: {ex.Message}）");
+        }
     }
 
     /// <summary>見本の棚にしまってあるものの Id（新しい順。索引のファイルを直接読む）。読めなければ空。</summary>

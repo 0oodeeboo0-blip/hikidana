@@ -74,6 +74,21 @@ internal interface ISettingsHost
     /// <summary>棚に入ったら取っ手で知らせるかを変える。</summary>
     void SetSignalOnCapture(bool on);
 
+    /// <summary>見つかっている新しい版（無ければ null）。</summary>
+    Hikidana.Core.Updates.ReleaseInfo? AvailableUpdate { get; }
+
+    /// <summary>新しい版について、いまの様子の説明（「いまの版が最新です」など）。</summary>
+    string UpdateStatus { get; }
+
+    /// <summary>新しい版を、いま確かめる。</summary>
+    Task CheckForUpdateAsync();
+
+    /// <summary>新しい版に入れ替えて、起動し直す。</summary>
+    void InstallUpdate();
+
+    /// <summary>新しい版を自動で確かめるかを変える。</summary>
+    void SetCheckForUpdates(bool on);
+
     /// <summary>まとめて消す（ピン留めは残す）。知らせの「元に戻す」で戻せる。</summary>
     void Clear(ClearScope scope);
 

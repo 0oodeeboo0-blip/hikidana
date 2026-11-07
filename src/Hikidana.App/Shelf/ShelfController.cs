@@ -29,6 +29,10 @@ internal sealed partial class ShelfController : IDisposable
     private readonly AppSettings settings;
     private readonly SettingsStore settingsStore;
     private readonly StartupRegistration? startup;
+    private readonly Updates.UpdateService? updates;
+    private readonly DispatcherTimer updateTimer = new() { Interval = TimeSpan.FromHours(6) };
+    private string? announcedUpdate;
+    private bool installing;
     private readonly HandleWindow handle = new();
     private readonly ShelfWindow shelf = new();
     private readonly ToastWindow toast = new();
@@ -54,8 +58,10 @@ internal sealed partial class ShelfController : IDisposable
     private bool disposed;
 
     /// <param name="startup">サインインしたら起動する設定。見本で動かすときは null（本物の設定を変えない）。</param>
-    public ShelfController(ClipStore store, ClipboardWatcher watcher, PasteService paste, AppSettings settings, SettingsStore settingsStore, StartupRegistration? startup)
+    /// <param name="updates">新しい版のお知らせ。見本で動かすときは null（確かめない）。</param>
+    public ShelfController(ClipStore store, ClipboardWatcher watcher, PasteService paste, AppSettings settings, SettingsStore settingsStore, StartupRegistration? startup, Updates.UpdateService? updates)
     {
+        this.updates = updates;
         this.store = store;
         this.watcher = watcher;
         this.paste = paste;
@@ -117,8 +123,10 @@ internal sealed partial class ShelfController : IDisposable
 
     public bool IsOpen => isOpen;
 
-    /// <summary>見せ始める（取っ手を出す）。<paramref name="open"/> なら棚も開く。</summary>
-    public void Start(bool open)
+    /// <summary>
+    /// 見せ始める（取っ手を出す）。<paramref name="open"/> なら棚も開く。<paramref name="updated"/> なら、新しい版になったことを知らせる。
+    /// </summary>
+    public void Start(bool open, bool updated = false)
     {
         // 見せる前にウインドウを作って置き場所を決める（出たときに跳ねないように）
         WindowHelper.HandleOf(handle);
@@ -139,6 +147,24 @@ internal sealed partial class ShelfController : IDisposable
         pruneTimer.Tick += (_, _) => PruneOld();
         pruneTimer.Start();
         ApplyHotkey();
+        if (updates is not null)
+        {
+            // 起動してすぐは混み合うので、少し待ってから確かめる。そのあとは 6 時間ごと
+            updateTimer.Tick += (_, _) =>
+            {
+                updateTimer.Interval = TimeSpan.FromHours(6);
+                if (settings.CheckForUpdates)
+                {
+                    _ = CheckForUpdateAsync(announce: true);
+                }
+            };
+            updateTimer.Interval = TimeSpan.FromSeconds(updated ? 5 : 30);
+            updateTimer.Start();
+            if (updated)
+            {
+                updates.CleanDownloads();
+            }
+        }
         Theme.Palette.Changed += OnPaletteChanged;
 
         tray = new TrayIcon(TrayTooltip());
@@ -150,6 +176,11 @@ internal sealed partial class ShelfController : IDisposable
         if (open)
         {
             Open();
+        }
+        else if (updated)
+        {
+            Log.Info($"新しい版になりました: {App.Version}");
+            ShowToast($"新しい版（{Hikidana.Core.Updates.ReleaseInfo.ParseVersion(App.Version)?.ToString(3) ?? App.Version}）になりました。", ToastKind.Success, TimeSpan.FromSeconds(6));
         }
         else if (!settings.WelcomeShown)
         {
@@ -266,6 +297,7 @@ internal sealed partial class ShelfController : IDisposable
         clock.Stop();
         leaveTimer.Stop();
         pruneTimer.Stop();
+        updateTimer.Stop();
         dismiss.Dispose();
         hotkey.Dispose();
         settingsWindow?.Close();
@@ -749,6 +781,80 @@ internal sealed partial class ShelfController : IDisposable
         Log.Info("ショートカットで棚を開きました。");
     }
 
+    /// <summary>新しい版を確かめる。<paramref name="announce"/> なら、見つかったとき知らせを出す（同じ版は 1 回だけ）。</summary>
+    private async Task CheckForUpdateAsync(bool announce)
+    {
+        if (updates is null || installing || disposed)
+        {
+            return;
+        }
+
+        var release = await updates.CheckAsync();
+        RaiseSettingsChanged();
+        if (release is not null && announce && announcedUpdate != release.Tag && !disposed)
+        {
+            announcedUpdate = release.Tag;
+            ShowToast($"新しい版 {release.DisplayVersion} があります。", ToastKind.Info, TimeSpan.FromSeconds(20), "入れ替える", InstallUpdate);
+        }
+    }
+
+    /// <summary>
+    /// 新しい版をダウンロードして、この exe と入れ替え、起動し直す（棚の中身と設定はそのまま）。
+    /// できなかったときは、ダウンロードのページを開く。
+    /// </summary>
+    public async void InstallUpdate()
+    {
+        if (updates?.Available is not { } release || installing || disposed)
+        {
+            return;
+        }
+
+        installing = true;
+        RaiseSettingsChanged();
+        ShowToast($"新しい版 {release.DisplayVersion} をダウンロードしています…", ToastKind.Info, TimeSpan.FromMinutes(5));
+        try
+        {
+            var exe = await updates.DownloadAsync(release);
+            var current = Environment.ProcessPath ?? throw new InvalidOperationException("この exe の場所がわかりません。");
+            Hikidana.Core.Updates.SelfUpdate.Replace(current, exe);
+            Log.Info($"新しい版に入れ替えました: {release.Tag}。起動し直します。");
+            var start = new ProcessStartInfo(current) { UseShellExecute = false };
+            start.ArgumentList.Add("--updated");
+            start.ArgumentList.Add("--wait");
+            start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Process.Start(start);
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or TaskCanceledException or System.ComponentModel.Win32Exception)
+        {
+            Log.Warn("新しい版に入れ替えられませんでした。", ex);
+            ShowToast("新しい版に入れ替えられませんでした。ダウンロードのページを開きます。", ToastKind.Critical, TimeSpan.FromSeconds(8));
+            OpenPage(release.PageUrl);
+        }
+        finally
+        {
+            installing = false;
+            RaiseSettingsChanged();
+        }
+    }
+
+    private static void OpenPage(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Log.Warn("ページを開けませんでした。", ex);
+        }
+    }
+
     /// <summary>コピーやスクリーンショットを棚にしまった（どのスレッドからでも呼べる）。棚が閉じていれば、取っ手で知らせる。</summary>
     public void NotifyRecorded(Clip clip)
     {
@@ -1079,19 +1185,30 @@ internal sealed partial class ShelfController : IDisposable
 
     private string TrayTooltip() => settings.Paused ? "Hikidana（記録を止めています）" : "Hikidana";
 
-    private IReadOnlyList<TrayMenuItem> TrayMenu() =>
-    [
-        new(1, isOpen ? "棚を閉じる" : "棚を開く", IsDefault: true),
-        new(7, "設定"),
-        TrayMenuItem.Separator,
-        new(2, "記録を止める", Checked: settings.Paused),
-        new(6, "マウスを乗せるだけで開く", Checked: settings.OpenOnHover),
-        TrayMenuItem.Separator,
-        new(3, "しまってある場所を開く"),
-        new(4, "記録（ログ）の場所を開く"),
-        TrayMenuItem.Separator,
-        new(5, "Hikidana を終了"),
-    ];
+    private IReadOnlyList<TrayMenuItem> TrayMenu()
+    {
+        var items = new List<TrayMenuItem>();
+        if (updates?.Available is { } release)
+        {
+            items.Add(new TrayMenuItem(8, $"新しい版 {release.DisplayVersion} に入れ替える"));
+            items.Add(TrayMenuItem.Separator);
+        }
+
+        items.AddRange(
+        [
+            new(1, isOpen ? "棚を閉じる" : "棚を開く", IsDefault: true),
+            new(7, "設定"),
+            TrayMenuItem.Separator,
+            new(2, "記録を止める", Checked: settings.Paused),
+            new(6, "マウスを乗せるだけで開く", Checked: settings.OpenOnHover),
+            TrayMenuItem.Separator,
+            new(3, "しまってある場所を開く"),
+            new(4, "記録（ログ）の場所を開く"),
+            TrayMenuItem.Separator,
+            new(5, "Hikidana を終了"),
+        ]);
+        return items;
+    }
 
     private void OnTrayMenuItem(int id)
     {
@@ -1117,6 +1234,9 @@ internal sealed partial class ShelfController : IDisposable
                 break;
             case 7:
                 OpenSettings();
+                break;
+            case 8:
+                InstallUpdate();
                 break;
         }
     }

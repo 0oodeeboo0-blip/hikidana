@@ -23,6 +23,7 @@ public partial class App : Application
     private ClipboardWatcher? watcher;
     private ClipboardRecorder? recorder;
     private ShelfController? controller;
+    private Updates.UpdateService? updates;
 
     /// <summary>版（例: 0.1.0+abc1234）。</summary>
     public static string Version =>
@@ -32,6 +33,12 @@ public partial class App : Application
     {
         base.OnStartup(e);
         var options = AppOptions.Parse(e.Args);
+
+        // 新しい版に入れ替えたあと: 前の版が終わるのを待ってから始める（同時に 2 つ動かないように）
+        if (options.WaitForProcess is { } previous)
+        {
+            WaitForExit(previous);
+        }
         if (options.Demo && options.DataRoot is null)
         {
             DemoData.Reset();
@@ -40,6 +47,10 @@ public partial class App : Application
         var dataRoot = options.DataRoot ?? (options.Demo ? DemoData.Root : ClipStore.DefaultRoot);
         Log.Initialize(Path.Combine(dataRoot, "logs"));
         Log.Info($"起動しました（Hikidana {Version}、{RuntimeInformation.OSDescription}、{RuntimeInformation.ProcessArchitecture}）");
+        if (Environment.ProcessPath is { } exePath && Hikidana.Core.Updates.SelfUpdate.CleanupOld(exePath) > 0)
+        {
+            Log.Info("前の版の exe を片付けました。");
+        }
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += (_, args) => Log.Error("例外のため終了します。", args.ExceptionObject as Exception);
         TaskScheduler.UnobservedTaskException += (_, args) =>
@@ -86,6 +97,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         controller?.Dispose();
+        updates?.Dispose();
         recorder?.Dispose();
         watcher?.Dispose();
         openWait?.Unregister(null);
@@ -147,8 +159,11 @@ public partial class App : Application
             }
         }
 
-        controller = new ShelfController(store, watcher, paste, settings, settingsStore, startup);
-        controller.Start(open: options.Open);
+        // 新しい版のお知らせ（見本のときは確かめない）
+        updates = options.Demo ? null : new Updates.UpdateService(dataRoot);
+
+        controller = new ShelfController(store, watcher, paste, settings, settingsStore, startup, updates);
+        controller.Start(open: options.Open, updated: options.Updated);
         if (options.Settings)
         {
             controller.OpenSettings();
@@ -182,6 +197,20 @@ public partial class App : Application
             _ => ThemeMode.System,
         };
         Palette.Apply(app, theme);
+    }
+
+    /// <summary>そのプロセスが終わるまで待つ（長くても 15 秒）。</summary>
+    private static void WaitForExit(int processId)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            process.WaitForExit(15000);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // もう終わっている
+        }
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

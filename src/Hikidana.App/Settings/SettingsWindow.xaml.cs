@@ -138,6 +138,13 @@ internal partial class SettingsWindow : Window
             }
 
             HotkeyWarning.Visibility = host.HotkeyWorks ? Visibility.Collapsed : Visibility.Visible;
+            UpdateSwitch.IsChecked = settings.CheckForUpdates;
+            UpdateStatusText.Text = host.UpdateStatus;
+            InstallUpdateButton.Visibility = host.AvailableUpdate is null ? Visibility.Collapsed : Visibility.Visible;
+            if (host.AvailableUpdate is { } release)
+            {
+                InstallUpdateButton.Content = $"新しい版 {release.DisplayVersion} に入れ替える";
+            }
             SelectAutoDelete(settings.AutoDeleteDays, settings.AutoDeleteScope);
         }
         finally
@@ -593,6 +600,29 @@ internal partial class SettingsWindow : Window
             host.Clear(scope);
         }
     }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        UpdateStatusText.Text = "新しい版を確かめています…";
+        try
+        {
+            await host.CheckForUpdateAsync();
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+            Load();
+        }
+    }
+
+    private void InstallUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        InstallUpdateButton.IsEnabled = false;
+        host.InstallUpdate();
+    }
+
+    private void UpdateSwitch_Click(object sender, RoutedEventArgs e) => host.SetCheckForUpdates(UpdateSwitch.IsChecked == true);
 
     private void OpenData_Click(object sender, RoutedEventArgs e) => host.OpenDataFolder();
 

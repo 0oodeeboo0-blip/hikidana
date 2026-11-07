@@ -101,6 +101,7 @@ internal static unsafe partial class TestNative
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     public const uint MOUSEEVENTF_LEFTUP = 0x0004;
     public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+    public const uint MOUSEEVENTF_WHEEL = 0x0800;
     public const int SM_CXSCREEN = 0;
     public const int SM_CYSCREEN = 1;
 

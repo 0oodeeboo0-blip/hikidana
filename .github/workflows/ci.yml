@@ -163,6 +163,45 @@ jobs:
           Write-Host '見本の記録（ログ）:'
           Get-ChildItem (Join-Path $env:TEMP 'Hikidana-demo\logs') -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName }
 
+      # Directory.Build.props の版が、まだ Releases に無ければ置く（アプリが新しい版に気づいて、ボタン 1 つで入れ替えられるように）。
+      # 利用者に届けたい変更を出すときは、Directory.Build.props の Version を上げて push する。
+      - name: 新しい版を Releases に置く
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Select-Xml -Path Directory.Build.props -XPath '//Version').Node.InnerText.Trim()
+          $tag = "v$version"
+          $PSNativeCommandUseErrorActionPreference = $false
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "$tag は、もう Releases にあります"
+            exit 0
+          }
+          $stage = Join-Path $env:RUNNER_TEMP 'release'
+          New-Item -ItemType Directory -Force (Join-Path $stage 'Hikidana') | Out-Null
+          Copy-Item publish\Hikidana-win-x64\* (Join-Path $stage 'Hikidana') -Recurse
+          $name = "Hikidana-$version-win-x64.zip"
+          $zip = Join-Path $env:RUNNER_TEMP $name
+          Compress-Archive -Path (Join-Path $stage 'Hikidana') -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path "$zip.sha256" -Value "$hash  $name" -NoNewline -Encoding ascii
+          $notes = "docs/releases/$version.md"
+          if (-not (Test-Path $notes)) {
+            $notes = 'docs/releases/default.md'
+          }
+          $extra = @()
+          if ($version.Contains('-')) {
+            $extra += '--prerelease'
+          }
+          gh release create $tag $zip "$zip.sha256" --title "Hikidana $version" --notes-file $notes --target $env:GITHUB_SHA @extra
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Releases に置けませんでした（$tag）"
+            exit 1
+          }
+          Write-Host "Releases に置きました: $tag（$((Get-Item $zip).Length) バイト、SHA-256 $hash）"
+
       - name: 画面写真を保存
         if: always()
         uses: actions/upload-artifact@v6

@@ -30,6 +30,12 @@ public sealed record AppOptions
     /// <summary>設定の画面を開いて始める（--settings）。</summary>
     public bool Settings { get; init; }
 
+    /// <summary>新しい版に入れ替えたあとの起動（--updated）。</summary>
+    public bool Updated { get; init; }
+
+    /// <summary>このプロセス（入れ替える前の版）が終わるのを待ってから始める（--wait 番号）。</summary>
+    public int? WaitForProcess { get; init; }
+
     public static AppOptions Parse(IReadOnlyList<string> args)
     {
         var options = new AppOptions();
@@ -53,6 +59,13 @@ public sealed record AppOptions
                     break;
                 case "--settings":
                     options = options with { Settings = true };
+                    break;
+                case "--updated":
+                    options = options with { Updated = true };
+                    break;
+                case "--wait" when next is not null && int.TryParse(next, NumberStyles.None, CultureInfo.InvariantCulture, out var pid):
+                    options = options with { WaitForProcess = pid };
+                    i++;
                     break;
                 case "--edge" when next is not null && Enum.TryParse<ShelfEdge>(next, ignoreCase: true, out var edge):
                     options = options with { Edge = edge };

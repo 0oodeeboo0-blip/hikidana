@@ -12,7 +12,12 @@
         Foreground="{DynamicResource Hkd.TextPrimary}"
         FontFamily="{StaticResource UiFont}"
         FontSize="13"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        AllowDrop="True"
+        DragEnter="Window_DragOver"
+        DragOver="Window_DragOver"
+        DragLeave="Window_DragLeave"
+        Drop="Window_Drop">
   <!--
     棚。作業中のアプリからフォーカスを奪わない（WS_EX_NOACTIVATE。ShelfWindow.xaml.cs）。
     置き場所と大きさは ShelfController が本当の画素で決める。
@@ -83,6 +88,7 @@
       <ItemsControl.ItemTemplate>
         <DataTemplate DataType="{x:Type local:ClipItem}">
           <Button Style="{StaticResource CardButton}" Margin="0,0,0,8" Click="Card_Click"
+                  PreviewMouseLeftButtonDown="Card_PreviewMouseLeftButtonDown" PreviewMouseMove="Card_PreviewMouseMove"
                   ToolTip="{Binding PasteToolTip}" ToolTipService.InitialShowDelay="1500">
             <StackPanel>
               <!-- 上の行: 種類・アプリ・いつ。マウスを乗せると操作のボタン -->
@@ -171,6 +177,17 @@
         </DataTemplate>
       </ItemsControl.ItemTemplate>
     </ItemsControl>
+
+    <!-- ほかのアプリからドラッグしてきたとき -->
+    <Border x:Name="DropOverlay" Grid.Row="0" Grid.RowSpan="3" Margin="8" CornerRadius="8" Visibility="Collapsed"
+            Background="{DynamicResource Hkd.PanelBackground}" BorderBrush="{DynamicResource Hkd.Accent}" BorderThickness="2"
+            IsHitTestVisible="False">
+      <StackPanel VerticalAlignment="Center" Margin="24,0">
+        <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="28" HorizontalAlignment="Center"
+                   Foreground="{DynamicResource Hkd.Accent}" />
+        <TextBlock Text="ここに置くと、棚にしまえます" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,12,0,0" />
+      </StackPanel>
+    </Border>
 
     <!-- 空のとき -->
     <StackPanel x:Name="EmptyState" Grid.Row="2" Margin="36,0" VerticalAlignment="Center" Visibility="Collapsed">

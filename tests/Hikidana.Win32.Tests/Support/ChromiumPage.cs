@@ -7,8 +7,8 @@ namespace Hikidana.Win32.Tests.Support;
 /// <summary>ページが受け取った 1 つのファイル。</summary>
 internal sealed record PastedFile(string Name, string Type, long Size);
 
-/// <summary>ページが受け取った 1 回の貼り付け（ブラウザーの paste イベントの中身）。</summary>
-internal sealed record PasteEvent(int Number, IReadOnlyList<string> Types, IReadOnlyList<string> Items, IReadOnlyList<PastedFile> Files, string Text, int HtmlLength, int Width, int Height, string Raw)
+/// <summary>ページが受け取った 1 回の貼り付けかドロップ（ブラウザーの paste・drop イベントの中身）。Kind は paste か drop。</summary>
+internal sealed record PasteEvent(int Number, string Kind, IReadOnlyList<string> Types, IReadOnlyList<string> Items, IReadOnlyList<PastedFile> Files, string Text, int HtmlLength, int Width, int Height, string Raw)
 {
     public override string ToString() => Raw;
 }
@@ -112,7 +112,15 @@ internal sealed class ChromiumPage : IDisposable
         return new ChromiumPage(process, window);
     }
 
-    /// <summary>次の貼り付けを待つ（前に読んだものより新しいもの）。</summary>
+    /// <summary>ページが映っている所（本当の画素）。</summary>
+    public TestNative.RECT Viewport()
+    {
+        var content = Desktop.FindDescendant(Window, w => Desktop.ClassOf(w) == "Chrome_RenderWidgetHostHWND");
+        Assert.True(TestNative.GetWindowRect(content != 0 ? content : Window, out var rect));
+        return rect;
+    }
+
+    /// <summary>次の貼り付けかドロップを待つ（前に読んだものより新しいもの）。</summary>
     public async Task<PasteEvent> NextPasteAsync(int timeoutMilliseconds = 8000)
     {
         PasteEvent? found = null;
@@ -157,6 +165,7 @@ internal sealed class ChromiumPage : IDisposable
             static IReadOnlyList<string> Strings(JsonElement element) => element.EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
             return new PasteEvent(
                 root.GetProperty("n").GetInt32(),
+                root.TryGetProperty("kind", out var kind) ? kind.GetString() ?? "paste" : "paste",
                 Strings(root.GetProperty("types")),
                 Strings(root.GetProperty("items")),
                 root.GetProperty("files").EnumerateArray()

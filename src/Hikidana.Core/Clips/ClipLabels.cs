@@ -3,6 +3,9 @@ namespace Hikidana.Core.Clips;
 /// <summary>画面に出す、種類の名前など。</summary>
 public static class ClipLabels
 {
+    /// <summary>取っ手や棚へドラッグしてしまったときの「コピーしたアプリ」（どのアプリから来たかはわからない）。</summary>
+    public const string DropSource = "drop";
+
     public static string KindName(ClipKind kind) => kind switch
     {
         ClipKind.Text => "テキスト",
@@ -46,6 +49,7 @@ public static class ClipLabels
             "slack" => "Slack",
             "teams" or "ms-teams" => "Teams",
             "windowsterminal" => "ターミナル",
+            DropSource => "ドラッグで追加",
             _ => name,
         };
     }

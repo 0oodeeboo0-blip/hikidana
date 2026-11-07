@@ -13,6 +13,7 @@
   <!--
     画面の端の取っ手。ふだんは細い線だけが見えて、その線のところだけがマウスを受ける（ほかは透けて下のウインドウに届く）。
     マウスを乗せると、つまみが出る。クリックで棚を開き、ドラッグで端に沿って動かせる。
+    ほかのアプリからファイル・画像・テキストをドラッグしてきて落とすと、棚にしまえる。
   -->
   <Grid x:Name="Root"
         MouseEnter="Root_MouseEnter"
@@ -20,7 +21,12 @@
         MouseLeftButtonDown="Root_MouseLeftButtonDown"
         MouseMove="Root_MouseMove"
         MouseLeftButtonUp="Root_MouseLeftButtonUp"
-        LostMouseCapture="Root_LostMouseCapture">
+        LostMouseCapture="Root_LostMouseCapture"
+        AllowDrop="True"
+        DragEnter="Root_DragOver"
+        DragOver="Root_DragOver"
+        DragLeave="Root_DragLeave"
+        Drop="Root_Drop">
     <Border x:Name="HitArea" Background="#01000000">
       <Border x:Name="Strip" CornerRadius="2" Background="{DynamicResource Hkd.Accent}"
               BorderBrush="{DynamicResource Hkd.HandleStripEdge}" BorderThickness="0.5" />

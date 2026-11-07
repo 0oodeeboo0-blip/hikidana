@@ -176,4 +176,13 @@ public class ClipClassifierTests
         Assert.Null(ClipClassifier.Classify(Snap.Of("app.exe", Snap.UnicodeText("   \r\n"))));
         Assert.Null(ClipClassifier.Classify(Snap.Of("app.exe", Snap.Named("Some Private Format", new byte[] { 1 }))));
     }
+
+    [Fact]
+    public void DroppedImageIsImageNotScreenshot()
+    {
+        var image = TestImages.Opaque(20, 10);
+        var draft = ClipClassifier.Classify(Snap.Of(ClipLabels.DropSource, Snap.Png(image)))!;
+        Assert.Equal(ClipKind.Image, draft.Kind);
+        Assert.Equal(ClipLabels.DropSource, draft.SourceApp);
+    }
 }

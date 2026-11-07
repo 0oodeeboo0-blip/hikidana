@@ -21,6 +21,8 @@
   figcaption { font-size: 11px; padding: 5px 9px; color: #52525b; }
   #editor { min-height: 52px; max-height: 220px; overflow: auto; outline: none; font-size: 15px; line-height: 1.6; }
   #editor:empty::before { content: "メッセージを入力（ここに貼り付けます）"; color: #a1a1aa; }
+  #source { position: fixed; right: 24px; top: 84px; width: 300px; height: 56px; display: flex; align-items: center; justify-content: center;
+            background: #eef2ff; border: 1px dashed #6366f1; border-radius: 10px; font-size: 13px; color: #3730a3; cursor: grab; user-select: none; }
 </style>
 </head>
 <body>
@@ -28,6 +30,7 @@
   <h1>Hikidana の貼り付けテスト</h1>
   <p>チャットのアプリの入力欄と同じように、貼り付けの中身（paste イベント）を受け取って、下に書き出します。</p>
 </header>
+<div id="source" draggable="true" data-text="Edge からドラッグしたテキスト">ドラッグできる文字: Edge からドラッグしたテキスト</div>
 <main id="events"></main>
 <div class="composer">
   <div class="attachments" id="attachments"></div>
@@ -49,13 +52,31 @@
   });
   window.addEventListener('focus', () => editor.focus());
 
-  document.addEventListener('paste', async (e) => {
+  // チャットのアプリと同じく、ドラッグで落とされたものも受け取る（受け取らないと、ブラウザーがファイルを開いてしまう）
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    receive(e, e.dataTransfer, 'drop');
+  });
+  document.addEventListener('paste', (e) => receive(e, e.clipboardData, 'paste'));
+
+  // 棚へドラッグして渡すテスト用の、ドラッグできる文字
+  const source = document.getElementById('source');
+  source.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', source.dataset.text);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+
+  async function receive(e, data, kind) {
     const n = ++count;
-    const data = e.clipboardData;
     // 中身は、イベントの間にだけ読める
     const files = Array.from(data.files);
     const info = {
       n,
+      kind,
       types: Array.from(data.types),
       items: Array.from(data.items).map(i => i.kind + ':' + i.type),
       files: files.map(f => ({ name: f.name, type: f.type, size: f.size })),
@@ -94,7 +115,7 @@
     line.textContent = `#${n} ` + JSON.stringify(info);
     events.prepend(line);
     report(info);
-  });
+  }
 </script>
 </body>
 </html>

@@ -12,6 +12,8 @@ public partial class HandleWindow : Window
     private const double DragThreshold = 6;
 
     private ShelfLayout? layout;
+    private string chevron = string.Empty;
+    private bool dropping;
     private bool pressed;
     private bool dragging;
     private int pressedAt;
@@ -30,6 +32,9 @@ public partial class HandleWindow : Window
 
     /// <summary>ドラッグを終えた。</summary>
     public event Action? DragFinished;
+
+    /// <summary>ほかのアプリから、何かが落とされた。</summary>
+    public event Action<IDataObject>? Dropped;
 
     /// <summary>置く端に合わせて、線とつまみの形を変える。</summary>
     public void Apply(ShelfLayout newLayout)
@@ -91,7 +96,8 @@ public partial class HandleWindow : Window
     {
         Tab.CornerRadius = corners;
         Tab.BorderThickness = border;
-        Chevron.Text = glyph;
+        chevron = glyph;
+        Chevron.Text = dropping ? "\uE710" : glyph;
     }
 
     private void Expand(bool expanded)
@@ -106,10 +112,58 @@ public partial class HandleWindow : Window
 
     private void Root_MouseLeave(object sender, MouseEventArgs e)
     {
-        if (!pressed)
+        if (!pressed && !dropping)
         {
             Expand(false);
         }
+    }
+
+    private void Root_DragOver(object sender, DragEventArgs e)
+    {
+        var accept = DropReader.CanRead(e.Data);
+        e.Effects = accept ? DragDropEffects.Copy : DragDropEffects.None;
+        if (accept && !dropping)
+        {
+            // 「ここに置ける」と見せる
+            dropping = true;
+            Chevron.Text = "\uE710";
+            Expand(true);
+        }
+
+        e.Handled = true;
+    }
+
+    private void Root_DragLeave(object sender, DragEventArgs e)
+    {
+        var position = e.GetPosition(this);
+        if (position.X < 0 || position.Y < 0 || position.X >= ActualWidth || position.Y >= ActualHeight)
+        {
+            EndDropping();
+        }
+
+        e.Handled = true;
+    }
+
+    private void Root_Drop(object sender, DragEventArgs e)
+    {
+        EndDropping();
+        e.Handled = true;
+        if (DropReader.CanRead(e.Data))
+        {
+            e.Effects = DragDropEffects.Copy;
+            Dropped?.Invoke(e.Data);
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+    }
+
+    private void EndDropping()
+    {
+        dropping = false;
+        Chevron.Text = chevron;
+        Expand(false);
     }
 
     private void Root_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

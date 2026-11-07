@@ -37,6 +37,7 @@ internal sealed class ShelfController : IDisposable
     private ShelfLayout layout = null!;
     private bool isOpen;
     private bool keepOpen;
+    private bool dragging;
     private int refreshQueued;
     private bool disposed;
 
@@ -52,6 +53,9 @@ internal sealed class ShelfController : IDisposable
         handle.Clicked += Toggle;
         handle.Dragged += OnHandleDragged;
         handle.DragFinished += SaveSettings;
+        handle.Dropped += OnDropped;
+        shelf.DragRequested += OnDragRequested;
+        shelf.Dropped += OnDropped;
         shelf.PasteRequested += OnPasteRequested;
         shelf.CopyRequested += OnCopyRequested;
         shelf.PinRequested += item => store.SetPinned(item.Clip.Id, !item.Pinned);
@@ -432,11 +436,126 @@ internal sealed class ShelfController : IDisposable
 
     private void OnForegroundChanged(nint window)
     {
-        // ほかのアプリやデスクトップをクリックしたら閉じる（同じアプリの中をクリックしただけなら閉じない）
-        if (isOpen && !keepOpen)
+        // ほかのアプリやデスクトップをクリックしたら閉じる（同じアプリの中をクリックしただけなら閉じない）。
+        // カードをドラッグしている間は、落とす先のアプリが前に出ても閉じない
+        if (isOpen && !keepOpen && !dragging)
         {
             Close();
         }
+    }
+
+    /// <summary>カードをほかのアプリへドラッグする（落とし終わるまで戻らない）。</summary>
+    private void OnDragRequested(ClipItem item, FrameworkElement source)
+    {
+        DragPlan plan;
+        try
+        {
+            plan = DragPlanner.Plan(store, item.Clip);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            Log.Warn("ドラッグの準備ができませんでした。", ex);
+            ShowToast("ドラッグの準備ができませんでした。", ToastKind.Critical, TimeSpan.FromSeconds(5));
+            return;
+        }
+
+        if (plan.IsEmpty)
+        {
+            ShowToast(plan.Note ?? "渡せるものがありません。", ToastKind.Caution, TimeSpan.FromSeconds(5));
+            return;
+        }
+
+        DragDropEffects effect;
+        dragging = true;
+        try
+        {
+            effect = DragDrop.DoDragDrop(source, DragData.Create(plan), DragData.Effects(plan));
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            Log.Warn("ドラッグの途中で失敗しました。", ex);
+            effect = DragDropEffects.None;
+        }
+        finally
+        {
+            dragging = false;
+        }
+
+        Log.Info($"ドラッグ: {item.Clip.Kind}、結果 {effect}");
+        if (effect == DragDropEffects.None)
+        {
+            return;
+        }
+
+        if (settings.MoveToTopOnPaste)
+        {
+            try
+            {
+                store.Touch(item.Clip.Id);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn("並べ替えを保存できませんでした。", ex);
+            }
+        }
+
+        if (settings.CloseAfterPaste && !keepOpen)
+        {
+            Close();
+        }
+
+        if (plan.Note is { } note)
+        {
+            ShowToast(note, ToastKind.Caution, TimeSpan.FromSeconds(5));
+        }
+    }
+
+    /// <summary>ほかのアプリから取っ手や棚に落とされたものを、しまう。</summary>
+    private void OnDropped(IDataObject data)
+    {
+        // 落とされたものは、落とされた瞬間にしか読めないので、まず読む。見分けてしまうのは、画面のスレッドの外で
+        Hikidana.Core.Clipboard.ClipboardSnapshot? snapshot;
+        try
+        {
+            snapshot = DropReader.Read(data);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("落とされたものを読めませんでした。", ex);
+            snapshot = null;
+        }
+
+        if (snapshot is null)
+        {
+            ShowToast("しまえるものが見つかりませんでした。", ToastKind.Caution, TimeSpan.FromSeconds(4));
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            var draft = ClipClassifier.Classify(snapshot!);
+            return draft is null ? null : store.Add(draft);
+        }).ContinueWith(
+            task =>
+            {
+                if (task.IsFaulted)
+                {
+                    Log.Warn("落とされたものを、しまえませんでした。", task.Exception);
+                    ShowToast("しまえませんでした。", ToastKind.Critical, TimeSpan.FromSeconds(5));
+                }
+                else if (task.Result is { } clip)
+                {
+                    Log.Info($"ドロップでしまいました: {clip.Kind}");
+                    ShowToast("棚にしまいました。", ToastKind.Success, TimeSpan.FromSeconds(2.2));
+                }
+                else
+                {
+                    ShowToast("しまえるものが見つかりませんでした。", ToastKind.Caution, TimeSpan.FromSeconds(4));
+                }
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => dispatcher.BeginInvoke(Relayout);

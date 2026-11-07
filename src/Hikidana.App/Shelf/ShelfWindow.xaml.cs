@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
 using Hikidana.App.Interop;
 using Hikidana.Win32;
 
@@ -12,6 +14,13 @@ public partial class ShelfWindow : Window
 {
     private const ushort LeftShift = 0xA0;
     private const ushort RightShift = 0xA1;
+
+    /// <summary>これだけ動かしたら、クリックではなくドラッグとみなす（DIP）。</summary>
+    private const double DragThreshold = 8;
+
+    private Point? pressedAt;
+    private ClipItem? pressedItem;
+    private bool suppressClick;
 
     public ShelfWindow()
     {
@@ -42,6 +51,12 @@ public partial class ShelfWindow : Window
     public event Action? OpenLogsRequested;
 
     public event Action? QuitRequested;
+
+    /// <summary>カードのドラッグを始めた（落とし終わるまで戻らない）。</summary>
+    public event Action<ClipItem, FrameworkElement>? DragRequested;
+
+    /// <summary>ほかのアプリから、何かが落とされた。</summary>
+    public event Action<IDataObject>? Dropped;
 
     public void ShowCount(int count) => CountText.Text = count == 0 ? string.Empty : $"{count} 件";
 
@@ -93,9 +108,9 @@ public partial class ShelfWindow : Window
             return viewer;
         }
 
-        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            if (FindScrollViewer(System.Windows.Media.VisualTreeHelper.GetChild(root, i)) is { } found)
+            if (FindScrollViewer(VisualTreeHelper.GetChild(root, i)) is { } found)
             {
                 return found;
             }
@@ -113,7 +128,105 @@ public partial class ShelfWindow : Window
         }
 
         e.Handled = true;
+        if (suppressClick)
+        {
+            // ドラッグのあとのクリックは、貼り付けにしない
+            suppressClick = false;
+            return;
+        }
+
         PasteRequested?.Invoke(item, ShiftHeld());
+    }
+
+    private void Card_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        suppressClick = false;
+        pressedItem = IsInsideInnerButton(e.OriginalSource as DependencyObject, sender) ? null : ItemOf(sender);
+        pressedAt = pressedItem is null ? null : e.GetPosition(this);
+    }
+
+    private void Card_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (pressedAt is not { } start || pressedItem is not { } item)
+        {
+            return;
+        }
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            pressedAt = null;
+            pressedItem = null;
+            return;
+        }
+
+        var position = e.GetPosition(this);
+        if (Math.Abs(position.X - start.X) < DragThreshold && Math.Abs(position.Y - start.Y) < DragThreshold)
+        {
+            return;
+        }
+
+        pressedAt = null;
+        pressedItem = null;
+        suppressClick = true;
+        var card = (FrameworkElement)sender;
+        try
+        {
+            DragRequested?.Invoke(item, card);
+        }
+        finally
+        {
+            // ドラッグの間に、ボタンが押されたままになっているので戻す
+            card.ReleaseMouseCapture();
+        }
+    }
+
+    /// <summary>押した所が、カードの中の小さなボタン（コピー・消す・ピン留め）なら true。</summary>
+    private static bool IsInsideInnerButton(DependencyObject? source, object card)
+    {
+        for (var node = source; node is not null && !ReferenceEquals(node, card); node = node is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+        {
+            if (node is ButtonBase)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        var accept = DropReader.CanRead(e.Data);
+        e.Effects = accept ? DragDropEffects.Copy : DragDropEffects.None;
+        DropOverlay.Visibility = accept ? Visibility.Visible : Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    private void Window_DragLeave(object sender, DragEventArgs e)
+    {
+        // 中の部品の間を動いたときにも来るので、ウインドウの外に出たときだけ消す
+        var position = e.GetPosition(this);
+        if (position.X < 0 || position.Y < 0 || position.X >= ActualWidth || position.Y >= ActualHeight)
+        {
+            DropOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        e.Handled = true;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        DropOverlay.Visibility = Visibility.Collapsed;
+        e.Handled = true;
+        if (DropReader.CanRead(e.Data))
+        {
+            e.Effects = DragDropEffects.Copy;
+            Dropped?.Invoke(e.Data);
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
     }
 
     private void Copy_Click(object sender, RoutedEventArgs e)

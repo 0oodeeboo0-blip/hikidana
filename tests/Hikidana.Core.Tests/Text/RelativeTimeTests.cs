@@ -42,6 +42,7 @@ public sealed class RelativeTimeTests
         Assert.Equal("メモ帳", ClipLabels.AppName("notepad.exe"));
         Assert.Equal("MyApp", ClipLabels.AppName("MyApp.exe"));
         Assert.Null(ClipLabels.AppName(null));
+        Assert.Equal("ドラッグで追加", ClipLabels.AppName(ClipLabels.DropSource));
         Assert.Equal("512 バイト", ClipLabels.Size(512));
         Assert.Equal("1.5 KB", ClipLabels.Size(1536));
         Assert.Equal("1.6 MB", ClipLabels.Size(1_677_722));

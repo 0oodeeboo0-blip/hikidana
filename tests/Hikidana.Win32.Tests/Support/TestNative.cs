@@ -97,8 +97,12 @@ internal static unsafe partial class TestNative
     [LibraryImport("user32.dll")]
     public static partial void keybd_event(byte virtualKey, byte scan, uint flags, nuint extraInfo);
 
+    public const uint MOUSEEVENTF_MOVE = 0x0001;
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+    public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+    public const int SM_CXSCREEN = 0;
+    public const int SM_CYSCREEN = 1;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT

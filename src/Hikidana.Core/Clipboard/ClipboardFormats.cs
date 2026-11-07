@@ -81,6 +81,8 @@ public static class FormatName
     public const string ShellIdList = "Shell IDList Array";
     public const string FileNameW = "FileNameW";
     public const string FileName = "FileName";
+    public const string UrlW = "UniformResourceLocatorW";
+    public const string Url = "UniformResourceLocator";
     public const string Csv = "Csv";
     public const string XmlSpreadsheet = "XML Spreadsheet";
     public const string Biff12 = "Biff12";

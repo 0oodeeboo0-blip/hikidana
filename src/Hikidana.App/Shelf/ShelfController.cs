@@ -180,18 +180,18 @@ internal sealed partial class ShelfController : IDisposable
         else if (updated)
         {
             Log.Info($"新しい版になりました: {App.Version}");
-            ShowToast($"新しい版（{Hikidana.Core.Updates.ReleaseInfo.ParseVersion(App.Version)?.ToString(3) ?? App.Version}）になりました。", ToastKind.Success, TimeSpan.FromSeconds(6));
+            ShowToastWhenIdle($"新しい版（{Hikidana.Core.Updates.ReleaseInfo.ParseVersion(App.Version)?.ToString(3) ?? App.Version}）になりました。", ToastKind.Success, TimeSpan.FromSeconds(6));
         }
         else if (!settings.WelcomeShown)
         {
             // 初めてのとき: 取っ手の場所を知らせる
             settings.WelcomeShown = true;
             SaveSettings();
-            ShowToast(WelcomeMessage(settings.Edge, hotkeyWorks ? hotkey.Current : null), ToastKind.Info, TimeSpan.FromSeconds(10));
+            ShowToastWhenIdle(WelcomeMessage(settings.Edge, hotkeyWorks ? hotkey.Current : null), ToastKind.Info, TimeSpan.FromSeconds(10));
         }
         else if (!hotkeyWorks)
         {
-            ShowHotkeyTaken();
+            dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, ShowHotkeyTaken);
         }
 
         Log.Info($"棚を用意しました（{settings.Edge}、位置 {settings.HandlePosition:0.00}、作業領域 {layout.WorkArea}、拡大率 {layout.Scale:0.##}）");
@@ -746,6 +746,13 @@ internal sealed partial class ShelfController : IDisposable
 
         return hotkeyWorks;
     }
+
+    /// <summary>
+    /// 起動の途中の知らせは、ほかのウインドウ（設定の画面など）が出そろって手が空いてから出す
+    /// （起動の途中で出すと、まれに知らせの中身が描かれないままになることがあった）。
+    /// </summary>
+    private void ShowToastWhenIdle(string message, ToastKind kind, TimeSpan duration) =>
+        dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => ShowToast(message, kind, duration));
 
     private void ShowHotkeyTaken() =>
         ShowToast($"ショートカット {Hotkey.Parse(settings.OpenHotkey)} は、ほかのアプリが使っているため使えません。設定の画面で、別のキーを選べます。", ToastKind.Caution, TimeSpan.FromSeconds(8));

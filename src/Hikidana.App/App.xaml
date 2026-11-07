@@ -35,13 +35,17 @@
               <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                 VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
             </Border>
+            <!--
+              マウスを乗せたときの色は、ボタンそのものの色として変える（中の Frame を直接変えない）。
+              こうすると、カードの Style の DataTrigger（選んでいる・キーボードで選んでいる）のほうが強く、乗せても選んだ色のままになる。
+            -->
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource Hkd.CardBackgroundHover}" />
-                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Hkd.CardBorderHover}" />
+                <Setter Property="Background" Value="{DynamicResource Hkd.CardBackgroundHover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Hkd.CardBorderHover}" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource Hkd.CardBackgroundPressed}" />
+                <Setter Property="Background" Value="{DynamicResource Hkd.CardBackgroundPressed}" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

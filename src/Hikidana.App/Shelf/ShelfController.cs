@@ -40,6 +40,7 @@ internal sealed class ShelfController : IDisposable
     private bool dragging;
     private bool typing;
     private TargetWindow? lastExternal;
+    private TrayIcon? tray;
     private int refreshQueued;
     private bool disposed;
 
@@ -93,6 +94,11 @@ internal sealed class ShelfController : IDisposable
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         clock.Tick += (_, _) => UpdateTimes();
         clock.Start();
+
+        tray = new TrayIcon(TrayTooltip());
+        tray.Clicked += Toggle;
+        tray.MenuItems = TrayMenu;
+        tray.MenuItemSelected += OnTrayMenuItem;
 
         handle.Show();
         if (open)
@@ -185,6 +191,7 @@ internal sealed class ShelfController : IDisposable
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         clock.Stop();
+        tray?.Dispose();
         foreground.Dispose();
         toast.Close();
         shelf.Close();
@@ -226,6 +233,7 @@ internal sealed class ShelfController : IDisposable
         settings.Paused = paused;
         watcher.Paused = paused;
         shelf.ShowPaused(paused);
+        tray?.SetTooltip(TrayTooltip());
         SaveSettings();
         Log.Info(paused ? "記録を止めました。" : "記録を再開しました。");
     }
@@ -375,12 +383,13 @@ internal sealed class ShelfController : IDisposable
     private TargetWindow? CurrentTarget()
     {
         var target = TargetWindow.Foreground();
-        if (target is not null && target.ProcessId == (uint)Environment.ProcessId)
+        if (target is null || target.ProcessId == (uint)Environment.ProcessId || NoTargetClasses.Contains(target.ClassName))
         {
+            // 棚が前にいる（検索中）か、タスクバーをクリックしたあと（タスクトレイから開いたなど）: その前のアプリへ
             return lastExternal is { Exists: true } previous ? previous : null;
         }
 
-        return target is null || NoTargetClasses.Contains(target.ClassName) ? null : target;
+        return target;
     }
 
     private async void OnPasteRequested(ClipItem item, bool alternate)
@@ -473,8 +482,9 @@ internal sealed class ShelfController : IDisposable
         }
 
         // ほかのアプリやデスクトップをクリックしたら閉じる（同じアプリの中をクリックしただけなら閉じない）。
-        // カードをドラッグしている間は、落とす先のアプリが前に出ても閉じない
-        if (isOpen && !keepOpen && !dragging)
+        // カードをドラッグしている間は、落とす先のアプリが前に出ても閉じない。
+        // タスクバーのときも閉じない（タスクトレイのアイコンから開いたときに、すぐ閉じてしまわないように）
+        if (isOpen && !keepOpen && !dragging && !(TargetWindow.From(window) is { } now && NoTargetClasses.Contains(now.ClassName)))
         {
             Close();
         }
@@ -646,6 +656,41 @@ internal sealed class ShelfController : IDisposable
             CancellationToken.None,
             TaskContinuationOptions.None,
             TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private string TrayTooltip() => settings.Paused ? "Hikidana（記録を止めています）" : "Hikidana";
+
+    private IReadOnlyList<TrayMenuItem> TrayMenu() =>
+    [
+        new(1, isOpen ? "棚を閉じる" : "棚を開く", IsDefault: true),
+        new(2, "記録を止める", Checked: settings.Paused),
+        TrayMenuItem.Separator,
+        new(3, "しまってある場所を開く"),
+        new(4, "記録（ログ）の場所を開く"),
+        TrayMenuItem.Separator,
+        new(5, "Hikidana を終了"),
+    ];
+
+    private void OnTrayMenuItem(int id)
+    {
+        switch (id)
+        {
+            case 1:
+                Toggle();
+                break;
+            case 2:
+                SetPaused(!settings.Paused);
+                break;
+            case 3:
+                OpenFolder(store.Root);
+                break;
+            case 4:
+                OpenFolder(Log.Folder ?? store.Root);
+                break;
+            case 5:
+                Application.Current.Shutdown();
+                break;
+        }
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => dispatcher.BeginInvoke(Relayout);

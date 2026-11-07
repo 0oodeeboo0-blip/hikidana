@@ -106,6 +106,98 @@ internal static unsafe partial class Native
     [LibraryImport("kernel32.dll")]
     public static partial nuint GlobalSize(nint memory);
 
+    // ---- 通知領域（タスクトレイ）のアイコンとメニュー ----
+    public const uint NIM_ADD = 0;
+    public const uint NIM_MODIFY = 1;
+    public const uint NIM_DELETE = 2;
+    public const uint NIM_SETVERSION = 4;
+    public const uint NIF_MESSAGE = 0x01;
+    public const uint NIF_ICON = 0x02;
+    public const uint NIF_TIP = 0x04;
+    public const uint NIF_SHOWTIP = 0x80;
+    public const uint NOTIFYICON_VERSION_4 = 4;
+    public const int NIN_SELECT = 0x0400;
+    public const int NIN_KEYSELECT = 0x0401;
+    public const int WM_CONTEXTMENU = 0x007B;
+    public const uint WM_NULL = 0x0000;
+    public const uint WM_APP = 0x8000;
+    public const uint MF_STRING = 0x0000;
+    public const uint MF_SEPARATOR = 0x0800;
+    public const uint MF_CHECKED = 0x0008;
+    public const uint TPM_RIGHTBUTTON = 0x0002;
+    public const uint TPM_RETURNCMD = 0x0100;
+    public const uint TPM_NONOTIFY = 0x0080;
+    public const int SM_CXSMICON = 49;
+    public const int SM_CYSMICON = 50;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NOTIFYICONDATAW
+    {
+        public uint cbSize;
+        public nint hWnd;
+        public uint uID;
+        public uint uFlags;
+        public uint uCallbackMessage;
+        public nint hIcon;
+        public fixed char szTip[128];
+        public uint dwState;
+        public uint dwStateMask;
+        public fixed char szInfo[256];
+        public uint uVersion;
+        public fixed char szInfoTitle[64];
+        public uint dwInfoFlags;
+        public Guid guidItem;
+        public nint hBalloonIcon;
+    }
+
+    [LibraryImport("shell32.dll", EntryPoint = "Shell_NotifyIconW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool Shell_NotifyIcon(uint message, NOTIFYICONDATAW* data);
+
+    [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial uint RegisterWindowMessage(string name);
+
+    [LibraryImport("comctl32.dll")]
+    public static partial int LoadIconWithScaleDown(nint instance, nint name, int cx, int cy, out nint icon);
+
+    [LibraryImport("shell32.dll", EntryPoint = "ExtractIconExW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial uint ExtractIconEx(string file, int index, nint* large, nint* small, uint count);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyIcon(nint icon);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial nint GetModuleHandle(string? name);
+
+    [LibraryImport("user32.dll")]
+    public static partial int GetSystemMetricsForDpi(int index, uint dpi);
+
+    [LibraryImport("user32.dll")]
+    public static partial uint GetDpiForWindow(nint hwnd);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint CreatePopupMenu();
+
+    [LibraryImport("user32.dll", EntryPoint = "AppendMenuW", StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool AppendMenu(nint menu, uint flags, nuint id, string? text);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetMenuDefaultItem(nint menu, uint item, uint byPosition);
+
+    [LibraryImport("user32.dll")]
+    public static partial int TrackPopupMenuEx(nint menu, uint flags, int x, int y, nint hwnd, nint parameters);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyMenu(nint menu);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PostMessage(nint hwnd, uint msg, nint wParam, nint lParam);
+
     // STGMEDIUM は COM のオブジェクトを含むので、LibraryImport ではなく昔の DllImport で呼ぶ
     [DllImport("ole32.dll")]
     public static extern void ReleaseStgMedium(ref System.Runtime.InteropServices.ComTypes.STGMEDIUM medium);

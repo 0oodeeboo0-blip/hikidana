@@ -78,7 +78,10 @@
         <RadioButton x:Name="FilterText" Style="{StaticResource Chip}" GroupName="Filter" Content="テキスト" Checked="Filter_Checked" />
         <RadioButton x:Name="FilterLinks" Style="{StaticResource Chip}" GroupName="Filter" Content="リンク" Checked="Filter_Checked" />
         <RadioButton x:Name="FilterFiles" Style="{StaticResource Chip}" GroupName="Filter" Content="ファイル" Checked="Filter_Checked" />
-        <RadioButton x:Name="FilterPinned" Style="{StaticResource Chip}" GroupName="Filter" Content="ピン留め" Checked="Filter_Checked" />
+        <RadioButton x:Name="FilterPinned" Style="{StaticResource Chip}" GroupName="Filter" Checked="Filter_Checked"
+                     ToolTip="ピン留めしたものだけ">
+          <TextBlock Text="&#xE718;" FontFamily="{StaticResource IconFont}" FontSize="11" Margin="0,1,0,0" />
+        </RadioButton>
       </StackPanel>
     </StackPanel>
 

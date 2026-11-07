@@ -243,15 +243,4 @@ public sealed class ClipStoreTests : IDisposable
     }
 
     private static ClipDraft Text(string text) => new() { Kind = ClipKind.Text, Text = text, SourceApp = "Notepad.exe" };
-
-    private sealed class FakeTime(DateTimeOffset start) : TimeProvider
-    {
-        private DateTimeOffset now = start;
-
-        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-
-        public override DateTimeOffset GetUtcNow() => now;
-
-        public void Advance(TimeSpan by) => now += by;
-    }
 }

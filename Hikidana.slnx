@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Hikidana.Core/Hikidana.Core.csproj" />
+    <Project Path="src/Hikidana.Win32/Hikidana.Win32.csproj" />
     <Project Path="src/Hikidana.App/Hikidana.App.csproj" />
   </Folder>
   <Folder Name="/tests/">

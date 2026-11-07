@@ -77,6 +77,12 @@ public static class InputSender
         return Send(CollectionsMarshal.AsSpan(inputs));
     }
 
+    /// <summary>
+    /// 割り当ての無いキーを 1 回押したことにする（どのアプリも何もしない）。
+    /// Windows は、最後に入力をしたプロセスにだけ前面のウインドウの切り替えを許すので、その前に使う。
+    /// </summary>
+    public static bool TapMaskKey() => Send([Key(VK_MASK, up: false), Key(VK_MASK, up: true)]);
+
     /// <summary>Ctrl+V を送る（いま前面にあるウインドウに届く）。Windows が受け付ければ true。</summary>
     public static bool SendCtrlV() =>
         Send([Key(VK_CONTROL, up: false), Key(VK_V, up: false), Key(VK_V, up: true), Key(VK_CONTROL, up: true)]);

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>HKD[loading]HKD</title>
+<style>
+  :root { color-scheme: light; font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column; background: #f4f4f5; color: #18181b; }
+  header { padding: 14px 24px; background: #fff; border-bottom: 1px solid #e4e4e7; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  header p { margin: 4px 0 0; font-size: 12px; color: #52525b; }
+  main { flex: 1; overflow: auto; padding: 16px 24px; display: flex; flex-direction: column-reverse; gap: 8px; }
+  .event { background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 8px 12px; font: 12px/1.5 "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-all; color: #3f3f46; }
+  .composer { margin: 0 24px 24px; background: #fff; border: 1px solid #d4d4d8; border-radius: 18px; padding: 12px 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06); }
+  .composer:focus-within { border-color: #a1a1aa; }
+  .attachments { display: flex; gap: 10px; flex-wrap: wrap; }
+  .attachments:empty { display: none; }
+  figure { margin: 0 0 10px; border: 1px solid #e4e4e7; border-radius: 12px; overflow: hidden; background: #fafafa; max-width: 300px; }
+  figure img { display: block; max-height: 170px; max-width: 300px; }
+  figcaption { font-size: 11px; padding: 5px 9px; color: #52525b; }
+  #editor { min-height: 52px; max-height: 220px; overflow: auto; outline: none; font-size: 15px; line-height: 1.6; }
+  #editor:empty::before { content: "メッセージを入力（ここに貼り付けます）"; color: #a1a1aa; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hikidana の貼り付けテスト</h1>
+  <p>チャットのアプリの入力欄と同じように、貼り付けの中身（paste イベント）を受け取って、下に書き出します。</p>
+</header>
+<main id="events"></main>
+<div class="composer">
+  <div class="attachments" id="attachments"></div>
+  <div id="editor" contenteditable="true"></div>
+</div>
+<script>
+  const editor = document.getElementById('editor');
+  const attachments = document.getElementById('attachments');
+  const events = document.getElementById('events');
+  let count = 0;
+
+  function report(info) {
+    document.title = 'HKD[' + JSON.stringify(info) + ']HKD';
+  }
+
+  window.addEventListener('load', () => {
+    editor.focus();
+    document.title = 'HKD[ready]HKD';
+  });
+  window.addEventListener('focus', () => editor.focus());
+
+  document.addEventListener('paste', async (e) => {
+    const n = ++count;
+    const data = e.clipboardData;
+    // 中身は、イベントの間にだけ読める
+    const files = Array.from(data.files);
+    const info = {
+      n,
+      types: Array.from(data.types),
+      items: Array.from(data.items).map(i => i.kind + ':' + i.type),
+      files: files.map(f => ({ name: f.name, type: f.type, size: f.size })),
+      text: data.getData('text/plain').slice(0, 300),
+      html: data.getData('text/html').length,
+      w: 0,
+      h: 0,
+    };
+
+    if (files.length > 0) {
+      // チャットのアプリと同じく、ファイルは入力欄に入れずに添付にする
+      e.preventDefault();
+      for (const file of files) {
+        const figure = document.createElement('figure');
+        if (file.type.startsWith('image/')) {
+          try {
+            const bitmap = await createImageBitmap(file);
+            info.w = bitmap.width;
+            info.h = bitmap.height;
+          } catch (err) {
+            info.error = String(err);
+          }
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(file);
+          figure.appendChild(img);
+        }
+        const caption = document.createElement('figcaption');
+        caption.textContent = `${file.name}（${file.type || '種類なし'}、${file.size} バイト${info.w ? `、${info.w}×${info.h}` : ''}）`;
+        figure.appendChild(caption);
+        attachments.appendChild(figure);
+      }
+    }
+
+    const line = document.createElement('div');
+    line.className = 'event';
+    line.textContent = `#${n} ` + JSON.stringify(info);
+    events.prepend(line);
+    report(info);
+  });
+</script>
+</body>
+</html>

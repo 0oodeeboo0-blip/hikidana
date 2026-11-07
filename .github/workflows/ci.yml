@@ -27,6 +27,10 @@ jobs:
       - name: テスト
         run: dotnet run --project tests/Hikidana.Core.Tests/Hikidana.Core.Tests.csproj -c Release
 
+      # Windows の部分は Linux では動かせないので、ビルドできるかだけ確かめる
+      - name: Windows の部分のビルド
+        run: dotnet build tests/Hikidana.Win32.Tests/Hikidana.Win32.Tests.csproj -c Release
+
   app:
     name: アプリのビルド (Windows x64)
     runs-on: windows-latest
@@ -97,6 +101,23 @@ jobs:
           Write-Host "ChangeDisplaySettings: $([Display]::Set(1920, 1080))（0 なら成功）"
           Add-Type -AssemblyName System.Windows.Forms
           Write-Host "画面: $([System.Windows.Forms.Screen]::PrimaryScreen.Bounds)"
+
+      # 本物のクリップボードとキー入力で、Edge のテストのページ（ChatGPT や Claude のアプリと同じ Chromium）と
+      # メモ帳に貼り付ける。Edge の初回の案内は出さないようにする
+      - name: テスト（Windows の部分、本当に貼り付ける）
+        shell: pwsh
+        env:
+          HIKIDANA_SCREENSHOTS: ${{ github.workspace }}\screenshots
+        run: |
+          $policy = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
+          New-Item -Path $policy -Force | Out-Null
+          foreach ($name in @('HideFirstRunExperience')) {
+            New-ItemProperty -Path $policy -Name $name -Value 1 -PropertyType DWord -Force | Out-Null
+          }
+          foreach ($name in @('StartupBoostEnabled', 'BackgroundModeEnabled', 'DefaultBrowserSettingEnabled')) {
+            New-ItemProperty -Path $policy -Name $name -Value 0 -PropertyType DWord -Force | Out-Null
+          }
+          dotnet run --project tests/Hikidana.Win32.Tests/Hikidana.Win32.Tests.csproj -c Release
 
       # 起動してすぐ落ちないかを確かめ、画面全体を撮る（ライトとダーク）
       - name: 起動テストと画面写真

@@ -191,15 +191,24 @@ public sealed class PasteService
             return true;
         }
 
-        NativeMethods.SetForegroundWindow(target.Handle);
-        for (var i = 0; i < 20; i++)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            await Task.Delay(15, cancellationToken).ConfigureAwait(false);
-            if (target.IsForeground())
+            if (attempt > 0)
             {
-                // 前に出たばかりのウインドウが、キー操作を受け取れるようになるまで少し待つ
-                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
-                return true;
+                // 切り替えを断られたときは、意味の無いキーを送って「最後に入力したプロセス」になってから、やり直す
+                InputSender.TapMaskKey();
+            }
+
+            NativeMethods.SetForegroundWindow(target.Handle);
+            for (var i = 0; i < 10; i++)
+            {
+                await Task.Delay(15, cancellationToken).ConfigureAwait(false);
+                if (target.IsForeground())
+                {
+                    // 前に出たばかりのウインドウが、キー操作を受け取れるようになるまで少し待つ
+                    await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
             }
         }
 

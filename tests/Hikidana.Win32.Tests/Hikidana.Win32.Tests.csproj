@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows の部分のテスト。本物のクリップボード、キー入力、Edge（中身は ChatGPT や Claude のアプリと同じ Chromium）、
+    メモ帳を使う。Windows でだけ動き、ほかでは飛ばす。CI では画面のあるランナーで動かす。
+    画面写真を撮るときは、環境変数 HIKIDANA_SCREENSHOTS に置き場所のフォルダーを入れる。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+      <_Parameter1>windows</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hikidana.Testing\Hikidana.Testing.csproj" />
+    <ProjectReference Include="..\..\src\Hikidana.Win32\Hikidana.Win32.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Hikidana.Core.Tests\Imaging\TestImages.cs" Link="Support\TestImages.cs" />
+    <None Include="Pages\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

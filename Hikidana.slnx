@@ -7,5 +7,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Hikidana.Testing/Hikidana.Testing.csproj" />
     <Project Path="tests/Hikidana.Core.Tests/Hikidana.Core.Tests.csproj" />
+    <Project Path="tests/Hikidana.Win32.Tests/Hikidana.Win32.Tests.csproj" />
   </Folder>
 </Solution>

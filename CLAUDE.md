@@ -8,11 +8,17 @@
 ## 構成
 
 - `src/Hikidana.Core`: クリップボードの中身の見分け方・保存・貼り付けの決まり（net10.0。画面にも Windows にも依存しない）。
+- `src/Hikidana.Win32`: Windows の API を直接呼ぶ部分（クリップボードの読み書きと見張り、Ctrl+V の送信、貼り付けの流れ）。
+  net10.0 にしてあるので作業環境でもビルドできる（動くのは Windows だけ。アセンブリに SupportedOSPlatform("windows")）。
 - `src/Hikidana.App`: WPF のアプリ（net10.0-windows）。画面と Windows に固有の部分だけ。発行では .NET ごと 1 つの exe にまとめる。
 - `tests/Hikidana.Testing`: 小さなテストの仕組み（`[Fact]`、`Assert`、`TestRunner`）。NuGet を使わないので、作業環境でも動く。
   `[Fact(WindowsOnly = true)]` は Windows でだけ、`[Fact(Sta = true)]` は STA のスレッドで動く。
 - `tests/Hikidana.Core.Tests`: Core のテスト。`dotnet run --project tests/Hikidana.Core.Tests -c Release`、
   絞り込みは末尾に `-- --filter 名前の一部`。
+- `tests/Hikidana.Win32.Tests`: 本物のクリップボードとキー入力のテスト。Edge で開いたテストのページ
+  （`Pages/paste-test.html`。チャットのアプリと同じく paste イベントで受け取り、中身をウインドウの題名に JSON で書く）と
+  メモ帳に、本当に貼り付ける。Windows でだけ動く（作業環境ではビルドと「全部飛ばし」だけ確かめられる）。
+  途中で環境が足りない（Edge が無いなど）とわかったら `SkipException` を投げる（失敗ではなく飛ばしになる）。
 
 ## ビルドと確認
 
@@ -20,10 +26,11 @@
   NuGet のパッケージを使わないプロジェクト（Core とテスト）だけは手元でビルド・テストできる。WPF（App）は手元ではビルドできない。
 - 変更は push し、GitHub Actions（`.github/workflows/ci.yml`）の結果で確かめる。
   - `gh run list --limit 5`、`gh run view <id> --log-failed`、`gh run view <id> --log`
-  - CI のジョブ: 仕組みのテスト（Linux）、アプリのビルド（Windows。テスト、発行、起動テストと画面写真つき）
+  - CI のジョブ: 仕組みのテスト（Linux）、アプリのビルド（Windows。テスト、発行、本当に貼り付けるテスト、起動テストと画面写真つき）
 - Actions の成果物（artifact）は作業環境からはダウンロードできない。画面写真は CI が `screenshots` ブランチに置くので、git で取る:
   `git fetch --depth 1 origin +refs/heads/screenshots:refs/remotes/origin/screenshots && git show origin/screenshots:startup-light.png > /tmp/startup-light.png`
   - `startup-light.png`、`startup-dark.png`: ふつうに起動した画面（画面全体）。
+  - `paste-*.png`: Windows の部分のテストで貼り付けた直後の画面。`failed-*.png`: 失敗したときの画面。
 - アプリのビルド結果は、利用者が Actions の成果物 `Hikidana-win-x64` からダウンロードする（GitHub へのログインが要る）。
 - 配布: `v0.1.0` のようなタグを push するか、Actions の「Release」で「Run workflow」を押して版を入れると、
   `.github/workflows/release.yml` が zip を作って GitHub の Releases に置く

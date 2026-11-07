@@ -287,6 +287,52 @@ public static unsafe class ClipboardAccess
         }
     }
 
+    /// <summary>いまクリップボードにある形の一覧（調べる用。中身は読まない）。並びは、置かれた順。</summary>
+    public static IReadOnlyList<(uint Id, string Name)> ListFormats(nint owner)
+    {
+        if (!TryOpen(owner))
+        {
+            return [];
+        }
+
+        try
+        {
+            var result = new List<(uint, string)>();
+            for (var f = NativeMethods.EnumClipboardFormats(0); f != 0; f = NativeMethods.EnumClipboardFormats(f))
+            {
+                result.Add((f, NameOf(f)));
+            }
+
+            return result;
+        }
+        finally
+        {
+            NativeMethods.CloseClipboard();
+        }
+    }
+
+    /// <summary>1 つの形の中身を読む（調べる用）。無いか読めなければ null。</summary>
+    public static byte[]? ReadFormat(nint owner, uint id, long maxBytes = 512L * 1024 * 1024)
+    {
+        if (!TryOpen(owner))
+        {
+            return null;
+        }
+
+        try
+        {
+            return ReadGlobal(id, maxBytes);
+        }
+        finally
+        {
+            NativeMethods.CloseClipboard();
+        }
+    }
+
+    /// <summary>名前で指定した形の中身を読む（調べる用）。</summary>
+    public static byte[]? ReadFormat(nint owner, string name, long maxBytes = 512L * 1024 * 1024) =>
+        ReadFormat(owner, NativeMethods.RegisterClipboardFormat(name), maxBytes);
+
     /// <summary>いまの通し番号（中身が変わるたびに増える）。</summary>
     public static uint SequenceNumber => NativeMethods.GetClipboardSequenceNumber();
 

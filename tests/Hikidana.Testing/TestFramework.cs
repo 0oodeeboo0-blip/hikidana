@@ -22,6 +22,9 @@ public sealed class FactAttribute : Attribute
 /// <summary>確かめた結果が違ったときに投げる。</summary>
 public sealed class AssertionException(string message) : Exception(message);
 
+/// <summary>テストの途中で、動かせない（環境に必要なものが無い）とわかったときに投げる。失敗ではなく飛ばしとして数える。</summary>
+public sealed class SkipException(string reason) : Exception(reason);
+
 public static class Assert
 {
     public static void True([DoesNotReturnIf(false)] bool condition, string? message = null)
@@ -180,7 +183,12 @@ public static class TestRunner
 
             var watch = Stopwatch.StartNew();
             var error = fact.Sta ? RunOnSta(type, method) : RunOne(type, method);
-            if (error is null)
+            if (error is SkipException skip)
+            {
+                skipped++;
+                Console.WriteLine($"  skip {name}（{skip.Message}）");
+            }
+            else if (error is null)
             {
                 passed++;
                 Console.WriteLine($"  ok   {name} ({watch.ElapsedMilliseconds} ms)");

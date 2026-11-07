@@ -108,6 +108,7 @@ jobs:
         shell: pwsh
         env:
           HIKIDANA_SCREENSHOTS: ${{ github.workspace }}\screenshots
+          HIKIDANA_EXE: ${{ github.workspace }}\publish\Hikidana-win-x64\Hikidana.exe
         run: |
           $policy = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
           New-Item -Path $policy -Force | Out-Null
@@ -119,30 +120,44 @@ jobs:
           }
           dotnet run --project tests/Hikidana.Win32.Tests/Hikidana.Win32.Tests.csproj -c Release
 
-      # 起動してすぐ落ちないかを確かめ、画面全体を撮る（ライトとダーク）
+      - name: アプリの記録（失敗したとき）
+        if: failure()
+        shell: pwsh
+        run: Get-ChildItem (Join-Path $env:TEMP 'Hikidana-demo\logs') -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName }
+
+      # 起動してすぐ落ちないかを確かめ、画面全体を撮る（見本の中身で、棚を開いた様子をいくつか）
       - name: 起動テストと画面写真
         shell: pwsh
         run: |
           $exe = Join-Path $PWD 'publish\Hikidana-win-x64\Hikidana.exe'
           New-Item -ItemType Directory -Force screenshots | Out-Null
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          foreach ($theme in @('light', 'dark')) {
-            $p = Start-Process -FilePath $exe -ArgumentList "--theme $theme" -PassThru
-            Start-Sleep -Seconds 12
+          $variants = @(
+            @{ Name = 'light'; Args = '--demo --open --theme light' },
+            @{ Name = 'dark'; Args = '--demo --open --theme dark' },
+            @{ Name = 'left-dark'; Args = '--demo --open --theme dark --edge left' },
+            @{ Name = 'top-light'; Args = '--demo --open --theme light --edge top --position 0.7' },
+            @{ Name = 'closed-light'; Args = '--demo --theme light' }
+          )
+          foreach ($v in $variants) {
+            $p = Start-Process -FilePath $exe -ArgumentList $v.Args -PassThru
+            Start-Sleep -Seconds 8
             if ($p.HasExited) {
-              Write-Error "アプリが起動直後に終了しました（$theme、終了コード $($p.ExitCode)）"
-              exit 1
+              Get-ChildItem (Join-Path $env:TEMP 'Hikidana-demo\logs') -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName }
+              Write-Error "アプリが起動直後に終了しました（$($v.Name)、終了コード $($p.ExitCode)）"
             }
             $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
             $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
             $g = [System.Drawing.Graphics]::FromImage($bmp)
             $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-            $bmp.Save((Join-Path $PWD "screenshots\startup-$theme.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+            $bmp.Save((Join-Path $PWD "screenshots\startup-$($v.Name).png"), [System.Drawing.Imaging.ImageFormat]::Png)
             $g.Dispose()
             $bmp.Dispose()
             Stop-Process -Id $p.Id -Force
             Start-Sleep -Seconds 2
           }
+          Write-Host '見本の記録（ログ）:'
+          Get-ChildItem (Join-Path $env:TEMP 'Hikidana-demo\logs') -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName }
 
       - name: 画面写真を保存
         if: always()

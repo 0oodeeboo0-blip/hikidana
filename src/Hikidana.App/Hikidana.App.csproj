@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hikidana.Core\Hikidana.Core.csproj" />
+    <ProjectReference Include="..\Hikidana.Win32\Hikidana.Win32.csproj" />
   </ItemGroup>
 
 </Project>

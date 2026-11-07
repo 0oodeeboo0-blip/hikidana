@@ -11,6 +11,12 @@
 - `src/Hikidana.Win32`: Windows の API を直接呼ぶ部分（クリップボードの読み書きと見張り、Ctrl+V の送信、貼り付けの流れ）。
   net10.0 にしてあるので作業環境でもビルドできる（動くのは Windows だけ。アセンブリに SupportedOSPlatform("windows")）。
 - `src/Hikidana.App`: WPF のアプリ（net10.0-windows）。画面と Windows に固有の部分だけ。発行では .NET ごと 1 つの exe にまとめる。
+  - `Shelf/ShelfController.cs`: 取っ手・棚・知らせのウインドウを動かす中心（開く・閉じる、置き場所、貼り付け、設定の保存）。
+  - `Shelf/ShelfWindow.xaml`（棚とカード）、`HandleWindow.xaml`（端の取っ手）、`ToastWindow.xaml`（知らせ）。
+    どれも WS_EX_NOACTIVATE でフォーカスを奪わず、置き場所は本当の画素で SetWindowPos する（`Interop/WindowHelper.cs`）。
+  - `Theme/Palette.cs`: 色（案A）。`Hkd.` で始まる名前のブラシを入れ、XAML は DynamicResource で使う。
+  - `Demo/DemoData.cs`: `--demo` の見本（一時フォルダーの別の棚）。CI の画面写真と、アプリを動かすテストで使う。
+  - 置き場所の計算（`Core/Layout/ShelfLayout.cs`）、設定（`Core/Settings`）、記録（`Core/Diagnostics/Log.cs`）は Core にあり、手元でテストできる。
 - `tests/Hikidana.Testing`: 小さなテストの仕組み（`[Fact]`、`Assert`、`TestRunner`）。NuGet を使わないので、作業環境でも動く。
   `[Fact(WindowsOnly = true)]` は Windows でだけ、`[Fact(Sta = true)]` は STA のスレッドで動く。
 - `tests/Hikidana.Core.Tests`: Core のテスト。`dotnet run --project tests/Hikidana.Core.Tests -c Release`、
@@ -29,14 +35,17 @@
   - CI のジョブ: 仕組みのテスト（Linux）、アプリのビルド（Windows。テスト、発行、本当に貼り付けるテスト、起動テストと画面写真つき）
 - Actions の成果物（artifact）は作業環境からはダウンロードできない。画面写真は CI が `screenshots` ブランチに置くので、git で取る:
   `git fetch --depth 1 origin +refs/heads/screenshots:refs/remotes/origin/screenshots && git show origin/screenshots:startup-light.png > /tmp/startup-light.png`
-  - `startup-light.png`、`startup-dark.png`: ふつうに起動した画面（画面全体）。
   - `paste-*.png`: Windows の部分のテストで貼り付けた直後の画面。`failed-*.png`: 失敗したときの画面。
+  - `app-*.png`: 発行したアプリで、取っ手から棚を開き、カードをクリックして Edge に貼った様子。
+  - `startup-*.png`: 見本の中身で棚を開いた様子（ライト・ダーク・左の端・上の端・閉じた状態）。
 - アプリのビルド結果は、利用者が Actions の成果物 `Hikidana-win-x64` からダウンロードする（GitHub へのログインが要る）。
 - 配布: `v0.1.0` のようなタグを push するか、Actions の「Release」で「Run workflow」を押して版を入れると、
   `.github/workflows/release.yml` が zip を作って GitHub の Releases に置く
   （説明は `docs/releases/<版>.md`、無ければ `docs/releases/default.md`。「-」を含む版は先行版）。
   作業環境からはタグを push できない。出すときは利用者に「Run workflow」を押してもらう。
-- 起動のときの指定: `--theme light|dark|system`。
+- 起動のときの指定: `--theme light|dark|system`、`--demo`（見本の中身。本物の棚と設定は使わない）、`--open`（棚を開いて始める）、
+  `--edge right|left|top|bottom`、`--position 0〜1`（取っ手の位置）、`--data フォルダー`（しまう場所）。
+- 発行したアプリを動かすテスト（`tests/Hikidana.Win32.Tests/AppTests.cs`）は、環境変数 `HIKIDANA_EXE` に exe の場所を入れたときだけ動く。
 
 ## 注意
 

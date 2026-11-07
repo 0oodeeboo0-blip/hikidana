@@ -57,15 +57,18 @@ public partial class ToastWindow : Window
         ActionButton.Content = actionText;
         ActionButton.Visibility = actionText is null ? Visibility.Collapsed : Visibility.Visible;
 
-        // 見せる前に大きさを測って、置き場所を決める（ちらつかないように）
+        // 見せる前に中身の大きさを測って、ウインドウの大きさと置き場所を決める（ちらつかないように）
         Card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var size = Card.DesiredSize;
-        var rect = layout.Toast(ShelfLayout.Px(size.Width, layout.Scale), ShelfLayout.Px(size.Height, layout.Scale), panelOpen);
+        var rect = layout.Toast((int)Math.Ceiling(size.Width * layout.Scale), (int)Math.Ceiling(size.Height * layout.Scale), panelOpen);
         WindowHelper.Place(this, rect);
         if (!IsVisible)
         {
             Show();
         }
+
+        InvalidateMeasure();
+        UpdateLayout();
 
         timer.Stop();
         timer.Interval = duration;

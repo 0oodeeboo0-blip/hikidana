@@ -7,13 +7,15 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         Topmost="True"
-        SizeToContent="WidthAndHeight"
         Background="{DynamicResource Hkd.InfoBackground}"
         Foreground="{DynamicResource Hkd.TextPrimary}"
         FontFamily="{StaticResource UiFont}"
         FontSize="13"
         UseLayoutRounding="True">
-  <!-- 貼り付けた・コピーした・貼れなかった、などの短い知らせ。しばらくすると消える（マウスを乗せている間は消えない） -->
+  <!--
+    貼り付けた・コピーした・貼れなかった、などの短い知らせ。しばらくすると消える（マウスを乗せている間は消えない）。
+    大きさは中身を測って ToastWindow.xaml.cs で決める（SizeToContent を使うと、最初に出したときに中身が描かれないことがあった）。
+  -->
   <Border x:Name="Card" MinWidth="220" MaxWidth="400" Padding="14,11,12,11">
     <DockPanel>
       <TextBlock x:Name="IconText" DockPanel.Dock="Left" FontFamily="{StaticResource IconFont}" FontSize="16"

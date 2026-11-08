@@ -65,14 +65,41 @@ internal interface ISettingsHost
     /// <summary>ショートカットを変える（設定の書き方。空なら使わない）。ほかのアプリが使っていて使えなければ false。</summary>
     bool SetHotkey(string setting);
 
-    /// <summary>自動で消す設定を <paramref name="days"/> 日・<paramref name="scope"/>（screenshots・all）にしたら、すぐ消えるものの数。</summary>
-    int CountAutoDelete(int days, string scope);
+    /// <summary>自動で消す設定を <paramref name="hours"/> 時間・<paramref name="scope"/>（screenshots・all）にしたら、すぐ消えるものの数。</summary>
+    int CountAutoDelete(int hours, string scope);
 
-    /// <summary>自動で消す設定を変える（0 日なら消さない）。もう期間を過ぎたものは、すぐ消える。</summary>
-    void SetAutoDelete(int days, string scope);
+    /// <summary>自動で消す設定を変える（0 時間なら消さない）。もう期間を過ぎたものは、すぐ消える。</summary>
+    void SetAutoDelete(int hours, string scope);
+
+    /// <summary>起動したときに消すもの（off・screenshots・all）を変える。</summary>
+    void SetClearOnStart(string what);
 
     /// <summary>棚に入ったら取っ手で知らせるかを変える。</summary>
     void SetSignalOnCapture(bool on);
+
+    /// <summary>知らせの印（kind・check・plain）を変える。</summary>
+    void SetSignalStyle(string style);
+
+    /// <summary>いまの知らせの印で、取っ手を 1 回光らせて見せる。</summary>
+    void PreviewSignal();
+
+    /// <summary>取っ手の大きさ（small・medium・large）を変える。</summary>
+    void SetHandleSize(string size);
+
+    /// <summary>棚の長さ（small・medium・large）を変える。</summary>
+    void SetPanelSize(string size);
+
+    /// <summary>棚の文字の大きさ（small・medium・large）を変える。</summary>
+    void SetTextSize(string size);
+
+    /// <summary>全画面のアプリが前にあるあいだ、取っ手を隠すかを変える。</summary>
+    void SetHideInFullscreen(bool on);
+
+    /// <summary>効果音を鳴らすかを変える（鳴らすようにしたら、試しに 1 回鳴らす）。</summary>
+    void SetSounds(bool on);
+
+    /// <summary>このアプリの GitHub のページを開く。</summary>
+    void OpenProjectPage();
 
     /// <summary>見つかっている新しい版（無ければ null）。</summary>
     Hikidana.Core.Updates.ReleaseInfo? AvailableUpdate { get; }

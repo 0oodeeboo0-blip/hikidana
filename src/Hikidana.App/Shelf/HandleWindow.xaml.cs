@@ -124,9 +124,11 @@ public partial class HandleWindow : Window
     public void Apply(ShelfLayout newLayout)
     {
         layout = newLayout;
-        const double hit = 10;
-        const double stripThickness = 4;
-        const double stripLength = 56;
+
+        // 取っ手の大きさ（設定）: マウスを受ける帯の厚みと、ふだん見える線
+        var hit = newLayout.HandleMetrics.Hit;
+        var stripThickness = newLayout.HandleMetrics.PillThickness;
+        var stripLength = newLayout.HandleMetrics.PillLength;
         const double inset = 2;
         switch (newLayout.Edge)
         {

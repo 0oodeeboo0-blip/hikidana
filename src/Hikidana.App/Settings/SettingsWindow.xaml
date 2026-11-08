@@ -3,10 +3,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Hikidana の設定"
-        Width="660"
-        Height="800"
-        MinWidth="540"
-        MinHeight="420"
+        Width="940"
+        Height="780"
+        MinWidth="760"
+        MinHeight="460"
         WindowStartupLocation="CenterScreen"
         Icon="/Assets/Hikidana.ico"
         Background="{DynamicResource Hkd.SettingsBackground}"
@@ -16,7 +16,7 @@
         Language="ja-JP"
         UseLayoutRounding="True">
   <!--
-    設定の画面（Windows 11 の設定アプリと同じ作り: まとまりの見出しと、1 つずつの設定のカード）。
+    設定の画面（Windows 11 の設定アプリと同じ作り: 左に項目、右にそのページ。ページには 1 つずつの設定のカード）。
     変えたらすぐ棚に反映して保存する（「OK」や「適用」は無い）。決めるのは ISettingsHost（ShelfController）。
     背景は、Windows 11 なら Mica（SettingsWindow.xaml.cs）。
     Language を ja-JP にして、日本語が中国語の字形で出ないようにする。
@@ -96,305 +96,540 @@
       <Setter Property="Margin" Value="0,0,0,2" />
       <Setter Property="Background" Value="{DynamicResource Hkd.MiniCard}" />
     </Style>
+
+    <!-- 左の項目（Windows 11 の設定と同じく、選んだものは薄い背景と、左のアクセント色の線） -->
+    <Style x:Key="NavItem" TargetType="RadioButton">
+      <Setter Property="GroupName" Value="Nav" />
+      <Setter Property="Foreground" Value="{DynamicResource Hkd.TextPrimary}" />
+      <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Height" Value="38" />
+      <Setter Property="Margin" Value="0,0,0,3" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Grid Background="Transparent">
+              <Border x:Name="Frame" CornerRadius="4" Background="Transparent" />
+              <Border x:Name="Pill" Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left" VerticalAlignment="Center"
+                      Background="{DynamicResource Hkd.Accent}" Visibility="Collapsed" />
+              <ContentPresenter Margin="14,0,12,0" VerticalAlignment="Center" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource Hkd.SubtleHover}" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource Hkd.SubtleHover}" />
+                <Setter TargetName="Pill" Property="Visibility" Value="Visible" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource Hkd.SubtlePressed}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 左の項目の記号 -->
+    <Style x:Key="NavGlyph" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Margin" Value="0,0,14,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextAlignment" Value="Center" />
+    </Style>
   </Window.Resources>
 
-  <ScrollViewer x:Name="Scroller" Focusable="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-    <StackPanel x:Name="Page" Margin="28,14,28,28" MaxWidth="880">
-      <TextBlock Text="設定" FontSize="28" FontWeight="SemiBold" Margin="2,0,0,0" />
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="256" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
 
-      <!-- 棚の位置 -->
-      <TextBlock Style="{StaticResource SectionTitle}" Text="棚の位置" Margin="2,18,0,8" />
-      <Border Style="{StaticResource SettingCard}" Padding="18,18,18,18">
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-
-          <!-- 画面の図。端の近くをクリックすると、その端に棚を出す（マウスを乗せると、出る場所を薄く見せる） -->
-          <StackPanel Grid.Column="0" Width="252" VerticalAlignment="Center">
-            <Grid Height="160">
-              <!-- 画面の枠（ふち）。中の Canvas が画面で、その中に壁紙・タスクバー・棚・取っ手を描く -->
-              <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Padding="4" CornerRadius="8" BorderThickness="1"
-                      Background="{DynamicResource Hkd.ScreenBezel}" BorderBrush="{DynamicResource Hkd.ScreenBezelEdge}">
-                <Canvas x:Name="Diagram" Width="240" Height="135"
-                        Background="Transparent" Cursor="Hand" ClipToBounds="True"
-                        ToolTip="クリックした端に、棚を出します"
-                        MouseMove="Diagram_MouseMove" MouseLeave="Diagram_MouseLeave" MouseLeftButtonUp="Diagram_MouseLeftButtonUp">
-                <Border x:Name="ScreenFrame" CornerRadius="3" Background="{DynamicResource Hkd.ScreenWallpaper}" />
-                <Border x:Name="TaskbarBar" Background="{DynamicResource Hkd.ScreenTaskbar}" />
-                <Rectangle x:Name="GhostPanel" RadiusX="3" RadiusY="3" StrokeThickness="1.5" StrokeDashArray="3 2"
-                           Visibility="Collapsed" Fill="{DynamicResource Hkd.GhostFill}" Stroke="{DynamicResource Hkd.Accent}" />
-                <Border x:Name="MiniPanel" CornerRadius="3" BorderThickness="1" ClipToBounds="True"
-                        Background="{DynamicResource Hkd.MiniPanel}" BorderBrush="{DynamicResource Hkd.CardBorderHover}">
-                  <StackPanel Margin="3.5,4,3.5,0">
-                    <Border Style="{StaticResource MiniCard}" Width="16" Height="3" HorizontalAlignment="Left" Margin="0,0,0,3" />
-                    <Border Style="{StaticResource MiniCard}" Height="15" />
-                    <Border Style="{StaticResource MiniCard}" Height="8" />
-                    <Border Style="{StaticResource MiniCard}" Height="8" />
-                    <Border Style="{StaticResource MiniCard}" Height="15" />
-                    <Border Style="{StaticResource MiniCard}" Height="8" />
-                    <Border Style="{StaticResource MiniCard}" Height="8" />
-                    <Border Style="{StaticResource MiniCard}" Height="15" />
-                    <Border Style="{StaticResource MiniCard}" Height="8" />
-                  </StackPanel>
-                </Border>
-                <Border x:Name="MiniHandle" CornerRadius="2" Background="{DynamicResource Hkd.Accent}" />
-                </Canvas>
-              </Border>
-            </Grid>
-            <!-- 画面の台 -->
-            <Border Width="28" Height="10" Background="{DynamicResource Hkd.ScreenStand}" HorizontalAlignment="Center" />
-            <Border Width="78" Height="5" CornerRadius="2.5" Background="{DynamicResource Hkd.ScreenStand}" HorizontalAlignment="Center" />
-          </StackPanel>
-
-          <StackPanel Grid.Column="1" Margin="22,0,0,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="棚を出す端" />
-            <TextBlock Style="{StaticResource SettingHint}"
-                       Text="図の端の近くをクリックするか、下のボタンで選びます。取っ手と棚は、すぐにそこへ動きます。" />
-            <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-              <RadioButton x:Name="EdgeRight" Style="{StaticResource EdgeChip}" GroupName="Edge" Content="右"
-                           ToolTip="画面の右の端に出す" Checked="Edge_Checked" />
-              <RadioButton x:Name="EdgeLeft" Style="{StaticResource EdgeChip}" GroupName="Edge" Content="左"
-                           ToolTip="画面の左の端に出す" Checked="Edge_Checked" />
-              <RadioButton x:Name="EdgeTop" Style="{StaticResource EdgeChip}" GroupName="Edge" Content="上"
-                           ToolTip="画面の上の端に出す" Checked="Edge_Checked" />
-              <RadioButton x:Name="EdgeBottom" Style="{StaticResource EdgeChip}" GroupName="Edge" Content="下"
-                           ToolTip="画面の下の端に出す" Checked="Edge_Checked" />
-            </StackPanel>
-          </StackPanel>
-        </Grid>
-      </Border>
-
-      <!-- モニターが 2 つ以上あるときだけ出す -->
-      <Border x:Name="MonitorCard" Style="{StaticResource SettingCard}" Visibility="Collapsed">
-        <DockPanel>
-          <ComboBox x:Name="MonitorBox" DockPanel.Dock="Right" MinWidth="230" VerticalAlignment="Center"
-                    AutomationProperties.Name="出す画面" SelectionChanged="Monitor_SelectionChanged" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE7F4;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="出す画面" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="どの画面の端に、棚を出すか。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <Button x:Name="CenterHandleButton" DockPanel.Dock="Right" MinWidth="128" VerticalAlignment="Center"
-                  Content="真ん中に戻す" Click="CenterHandle_Click" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE76F;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="取っ手の位置" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="取っ手は、ドラッグすると端に沿って動かせます。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <!-- 開き方 -->
-      <TextBlock Style="{StaticResource SectionTitle}" Text="開き方" />
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE7C9;" VerticalAlignment="Top" Margin="2,1,18,0" />
-          <StackPanel>
-            <TextBlock Style="{StaticResource SettingName}" Text="棚を開くとき" />
-            <RadioButton x:Name="OpenByClick" GroupName="OpenMode" Margin="0,10,0,0"
-                         Content="取っ手をクリックしたとき" Checked="OpenMode_Checked" />
-            <RadioButton x:Name="OpenByHover" GroupName="OpenMode" Margin="0,8,0,2" Checked="OpenMode_Checked">
-              <StackPanel>
-                <TextBlock Text="取っ手にマウスを乗せたとき" />
-                <TextBlock Style="{StaticResource SettingHint}" Text="棚からマウスを離すと閉じます。" />
-              </StackPanel>
-            </RadioButton>
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <ComboBox x:Name="HotkeyBox" DockPanel.Dock="Right" MinWidth="180" VerticalAlignment="Center"
-                    AutomationProperties.Name="ショートカットキー" SelectionChanged="Hotkey_SelectionChanged" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE765;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="ショートカットキー" />
-            <TextBlock Style="{StaticResource SettingHint}"
-                       Text="どのアプリを使っていても、このキーで棚が開きます。文字で探して ↑↓ で選び、Enter で貼り付けます。" />
-            <TextBlock x:Name="HotkeyWarning" Style="{StaticResource SettingHint}" Visibility="Collapsed"
-                       Foreground="{DynamicResource Hkd.Critical}"
-                       Text="このキーは、ほかのアプリが使っているため使えません。別のキーを選んでください。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <CheckBox x:Name="CloseAfterPasteSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
-                    AutomationProperties.Name="貼り付けたら棚を閉じる" Click="CloseAfterPaste_Click" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE77F;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="貼り付けたら棚を閉じる" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="オフにすると、棚を開いたまま続けて貼り付けられます。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <!-- 見た目 -->
-      <TextBlock Style="{StaticResource SectionTitle}" Text="見た目" />
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <ComboBox x:Name="ThemeBox" DockPanel.Dock="Right" MinWidth="200" VerticalAlignment="Center"
-                    AutomationProperties.Name="色" SelectionChanged="Theme_SelectionChanged">
-            <ComboBoxItem Content="Windows に合わせる" Tag="system" />
-            <ComboBoxItem Content="ライト" Tag="light" />
-            <ComboBoxItem Content="ダーク" Tag="dark" />
-          </ComboBox>
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE790;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="色" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="棚とこの画面を、明るい色か暗い色にします。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <CheckBox x:Name="SignalSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
-                    AutomationProperties.Name="棚に入ったら取っ手で知らせる" Click="Signal_Click" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE722;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="棚に入ったら取っ手で知らせる" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="スクリーンショットやコピーしたものが棚に入ると、取っ手から印が少し出ます。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <!-- 記録 -->
-      <TextBlock Style="{StaticResource SectionTitle}" Text="記録" />
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <ComboBox x:Name="MaxItemsBox" DockPanel.Dock="Right" MinWidth="140" VerticalAlignment="Center"
-                    AutomationProperties.Name="しまっておく数" SelectionChanged="MaxItems_SelectionChanged" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE8F1;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="しまっておく数" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="これより多くなると、古いものから消えます。ピン留めしたものは数に入らず、消えません。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE81C;" VerticalAlignment="Top" Margin="2,1,18,0" />
-          <StackPanel>
-            <TextBlock Style="{StaticResource SettingName}" Text="古いものを自動で消す" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="最後に使ってから日数がたったものを消します。ピン留めしたものは消えません。" />
-            <WrapPanel Margin="0,10,0,0">
-              <ComboBox x:Name="AutoDeleteDaysBox" MinWidth="150" Margin="0,0,8,4" AutomationProperties.Name="自動で消すまでの日数"
-                        SelectionChanged="AutoDelete_SelectionChanged">
-                <ComboBoxItem Content="消さない" Tag="0" />
-                <ComboBoxItem Content="1 日たったら" Tag="1" />
-                <ComboBoxItem Content="3 日たったら" Tag="3" />
-                <ComboBoxItem Content="7 日たったら" Tag="7" />
-                <ComboBoxItem Content="14 日たったら" Tag="14" />
-                <ComboBoxItem Content="30 日たったら" Tag="30" />
-              </ComboBox>
-              <ComboBox x:Name="AutoDeleteScopeBox" MinWidth="220" Margin="0,0,8,4" AutomationProperties.Name="自動で消すもの"
-                        SelectionChanged="AutoDelete_SelectionChanged">
-                <ComboBoxItem Content="スクリーンショットを消す" Tag="screenshots" />
-                <ComboBoxItem Content="ピン留め以外をすべて消す" Tag="all" />
-              </ComboBox>
-            </WrapPanel>
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <CheckBox x:Name="MoveToTopSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
-                    AutomationProperties.Name="貼り付けたものを上へ動かす" Click="MoveToTop_Click" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE74A;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="貼り付けたものを上へ動かす" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="貼り付けたりコピーしたりしたカードを、棚のいちばん上に動かします。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <CheckBox x:Name="PausedSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
-                    AutomationProperties.Name="記録を止める" Click="Paused_Click" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE769;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="記録を止める" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="止めている間は、コピーしたものもスクリーンショットも、棚に入りません。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE74D;" VerticalAlignment="Top" Margin="2,1,18,0" />
-          <StackPanel>
-            <TextBlock Style="{StaticResource SettingName}" Text="棚を片付ける" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="ピン留めしたものは残ります。消したあと少しの間は、知らせの「元に戻す」で戻せます。" />
-            <WrapPanel Margin="0,10,0,0">
-              <Button x:Name="ClearScreenshotsButton" Content="スクリーンショットを消す" Margin="0,0,8,4" Padding="12,5"
-                      Click="ClearScreenshots_Click" />
-              <Button x:Name="ClearAllButton" Content="すべて消す" Margin="0,0,8,4" Padding="12,5" Click="ClearAll_Click" />
-            </WrapPanel>
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <!-- 起動 -->
-      <TextBlock Style="{StaticResource SectionTitle}" Text="起動" />
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <CheckBox x:Name="StartupSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
-                    AutomationProperties.Name="Windows にサインインしたら起動する" Click="Startup_Click" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE7E8;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="Windows にサインインしたら起動する" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="パソコンを使い始めると、自動で Hikidana が動き始めます。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
-
-      <!-- このアプリについて -->
-      <TextBlock Style="{StaticResource SectionTitle}" Text="このアプリについて" />
-      <Border Style="{StaticResource SettingCard}" Padding="16,14,16,10">
-        <StackPanel>
-          <DockPanel>
-            <Image x:Name="AppIcon" Width="32" Height="32" Margin="0,0,14,0" VerticalAlignment="Center"
-                   RenderOptions.BitmapScalingMode="HighQuality" />
-            <StackPanel VerticalAlignment="Center">
-              <TextBlock Text="Hikidana" FontWeight="SemiBold" />
-              <TextBlock x:Name="VersionText" Style="{StaticResource SettingHint}" Margin="0,0,0,0" />
-              <TextBlock x:Name="UpdateStatusText" Style="{StaticResource SettingHint}" />
-            </StackPanel>
-          </DockPanel>
-          <WrapPanel Margin="46,12,0,0">
-            <Button x:Name="InstallUpdateButton" Style="{StaticResource AccentButton}" Margin="0,0,8,6" Visibility="Collapsed"
-                    Content="新しい版に入れ替える" Click="InstallUpdate_Click" />
-            <Button x:Name="CheckUpdateButton" Content="新しい版を確かめる" Margin="0,0,8,6" Padding="12,5" Click="CheckUpdate_Click" />
-            <Button Content="しまってある場所を開く" Margin="0,0,8,6" Padding="12,5" Click="OpenData_Click" />
-            <Button Content="記録（ログ）の場所を開く" Margin="0,0,8,6" Padding="12,5" Click="OpenLogs_Click" />
-          </WrapPanel>
+    <!-- 左: 項目 -->
+    <StackPanel Grid.Column="0" Margin="10,16,8,12">
+      <RadioButton x:Name="NavPosition" Style="{StaticResource NavItem}" Tag="position" IsChecked="True" Checked="Nav_Checked"
+                   AutomationProperties.Name="位置と大きさ">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource NavGlyph}" Text="&#xE7F4;" />
+          <TextBlock Text="位置と大きさ" VerticalAlignment="Center" />
         </StackPanel>
-      </Border>
-
-      <Border Style="{StaticResource SettingCard}">
-        <DockPanel>
-          <CheckBox x:Name="UpdateSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
-                    AutomationProperties.Name="新しい版を自動で確かめる" Click="UpdateSwitch_Click" />
-          <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE895;" />
-          <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource SettingName}" Text="新しい版を自動で確かめる" />
-            <TextBlock Style="{StaticResource SettingHint}" Text="新しい版が出たら知らせます。ボタン 1 つで入れ替えて、起動し直します（棚の中身と設定はそのままです）。" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
+      </RadioButton>
+      <RadioButton x:Name="NavBehavior" Style="{StaticResource NavItem}" Tag="behavior" Checked="Nav_Checked"
+                   AutomationProperties.Name="動作">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource NavGlyph}" Text="&#xE7C9;" />
+          <TextBlock Text="動作" VerticalAlignment="Center" />
+        </StackPanel>
+      </RadioButton>
+      <RadioButton x:Name="NavAppearance" Style="{StaticResource NavItem}" Tag="appearance" Checked="Nav_Checked"
+                   AutomationProperties.Name="見た目">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource NavGlyph}" Text="&#xE790;" />
+          <TextBlock Text="見た目" VerticalAlignment="Center" />
+        </StackPanel>
+      </RadioButton>
+      <RadioButton x:Name="NavRecords" Style="{StaticResource NavItem}" Tag="records" Checked="Nav_Checked"
+                   AutomationProperties.Name="記録と片付け">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource NavGlyph}" Text="&#xE81C;" />
+          <TextBlock Text="記録と片付け" VerticalAlignment="Center" />
+        </StackPanel>
+      </RadioButton>
+      <RadioButton x:Name="NavAbout" Style="{StaticResource NavItem}" Tag="about" Checked="Nav_Checked"
+                   AutomationProperties.Name="このアプリについて">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource NavGlyph}" Text="&#xE946;" />
+          <TextBlock Text="このアプリについて" VerticalAlignment="Center" />
+        </StackPanel>
+      </RadioButton>
     </StackPanel>
-  </ScrollViewer>
+
+    <!-- 右: ページ -->
+    <ScrollViewer x:Name="Scroller" Grid.Column="1" Focusable="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <StackPanel x:Name="Page" Margin="20,8,36,32" MaxWidth="820">
+        <TextBlock x:Name="PageTitle" Text="位置と大きさ" FontSize="28" FontWeight="SemiBold" Margin="2,0,0,18" />
+
+        <!-- 位置と大きさ -->
+        <StackPanel x:Name="PositionPage">
+          <Border Style="{StaticResource SettingCard}" Padding="18,18,18,18">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+
+              <!-- 画面の図。端の近くをクリックすると、その端に棚を出す（マウスを乗せると、出る場所を薄く見せる） -->
+              <StackPanel Grid.Column="0" Width="252" VerticalAlignment="Center">
+                <Grid Height="160">
+                  <!-- 画面の枠（ふち）。中の Canvas が画面で、その中に壁紙・タスクバー・棚・取っ手を描く -->
+                  <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Padding="4" CornerRadius="8" BorderThickness="1"
+                          Background="{DynamicResource Hkd.ScreenBezel}" BorderBrush="{DynamicResource Hkd.ScreenBezelEdge}">
+                    <Canvas x:Name="Diagram" Width="240" Height="135"
+                            Background="Transparent" Cursor="Hand" ClipToBounds="True"
+                            ToolTip="クリックした端に、棚を出します"
+                            MouseMove="Diagram_MouseMove" MouseLeave="Diagram_MouseLeave" MouseLeftButtonUp="Diagram_MouseLeftButtonUp">
+                    <Border x:Name="ScreenFrame" CornerRadius="3" Background="{DynamicResource Hkd.ScreenWallpaper}" />
+                    <Border x:Name="TaskbarBar" Background="{DynamicResource Hkd.ScreenTaskbar}" />
+                    <Rectangle x:Name="GhostPanel" RadiusX="3" RadiusY="3" StrokeThickness="1.5" StrokeDashArray="3 2"
+                               Visibility="Collapsed" Fill="{DynamicResource Hkd.GhostFill}" Stroke="{DynamicResource Hkd.Accent}" />
+                    <Border x:Name="MiniPanel" CornerRadius="3" BorderThickness="1" ClipToBounds="True"
+                            Background="{DynamicResource Hkd.MiniPanel}" BorderBrush="{DynamicResource Hkd.CardBorderHover}">
+                      <StackPanel Margin="3.5,4,3.5,0">
+                        <Border Style="{StaticResource MiniCard}" Width="16" Height="3" HorizontalAlignment="Left" Margin="0,0,0,3" />
+                        <Border Style="{StaticResource MiniCard}" Height="15" />
+                        <Border Style="{StaticResource MiniCard}" Height="8" />
+                        <Border Style="{StaticResource MiniCard}" Height="8" />
+                        <Border Style="{StaticResource MiniCard}" Height="15" />
+                        <Border Style="{StaticResource MiniCard}" Height="8" />
+                        <Border Style="{StaticResource MiniCard}" Height="8" />
+                        <Border Style="{StaticResource MiniCard}" Height="15" />
+                        <Border Style="{StaticResource MiniCard}" Height="8" />
+                      </StackPanel>
+                    </Border>
+                    <Border x:Name="MiniHandle" CornerRadius="2" Background="{DynamicResource Hkd.Accent}" />
+                    </Canvas>
+                  </Border>
+                </Grid>
+                <!-- 画面の台 -->
+                <Border Width="28" Height="10" Background="{DynamicResource Hkd.ScreenStand}" HorizontalAlignment="Center" />
+                <Border Width="78" Height="5" CornerRadius="2.5" Background="{DynamicResource Hkd.ScreenStand}" HorizontalAlignment="Center" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="1" Margin="22,0,0,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="棚を出す端" />
+                <TextBlock Style="{StaticResource SettingHint}"
+                           Text="図の端の近くをクリックするか、下のボタンで選びます。取っ手と棚は、すぐにそこへ動きます。" />
+                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                  <RadioButton x:Name="EdgeRight" Style="{StaticResource EdgeChip}" GroupName="Edge" Content="右"
+                               ToolTip="画面の右の端に出す" Checked="Edge_Checked" />
+                  <RadioButton x:Name="EdgeLeft" Style="{StaticResource EdgeChip}" GroupName="Edge" Content="左"
+                               ToolTip="画面の左の端に出す" Checked="Edge_Checked" />
+                  <RadioButton x:Name="EdgeTop" Style="{StaticResource EdgeChip}" GroupName="Edge" Content="上"
+                               ToolTip="画面の上の端に出す" Checked="Edge_Checked" />
+                  <RadioButton x:Name="EdgeBottom" Style="{StaticResource EdgeChip}" GroupName="Edge" Content="下"
+                               ToolTip="画面の下の端に出す" Checked="Edge_Checked" />
+                </StackPanel>
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <!-- モニターが 2 つ以上あるときだけ出す -->
+          <Border x:Name="MonitorCard" Style="{StaticResource SettingCard}" Visibility="Collapsed">
+            <DockPanel>
+              <ComboBox x:Name="MonitorBox" DockPanel.Dock="Right" MinWidth="230" VerticalAlignment="Center"
+                        AutomationProperties.Name="出す画面" SelectionChanged="Monitor_SelectionChanged" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE7F4;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="出す画面" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="どの画面の端に、棚を出すか。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <Button x:Name="CenterHandleButton" DockPanel.Dock="Right" MinWidth="128" VerticalAlignment="Center"
+                      Content="真ん中に戻す" Click="CenterHandle_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE76F;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="取っ手の位置" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="取っ手は、ドラッグすると端に沿って動かせます。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <TextBlock Style="{StaticResource SectionTitle}" Text="大きさ" />
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <RadioButton x:Name="HandleSmall" Style="{StaticResource EdgeChip}" GroupName="HandleSize" Content="小" Tag="small"
+                             ToolTip="細く短い取っ手" Checked="HandleSize_Checked" />
+                <RadioButton x:Name="HandleMedium" Style="{StaticResource EdgeChip}" GroupName="HandleSize" Content="中" Tag="medium"
+                             ToolTip="ふつうの取っ手" Checked="HandleSize_Checked" />
+                <RadioButton x:Name="HandleLarge" Style="{StaticResource EdgeChip}" GroupName="HandleSize" Content="大" Tag="large" Margin="0"
+                             ToolTip="太く長い取っ手（マウスで当てやすい）" Checked="HandleSize_Checked" />
+              </StackPanel>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE744;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="取っ手の大きさ" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="大きくすると、マウスで当てやすくなります。端の細い線と、マウスに反応する幅が変わります。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <RadioButton x:Name="PanelSmall" Style="{StaticResource EdgeChip}" GroupName="PanelSize" Content="小" Tag="small"
+                             ToolTip="画面の半分の長さ" Checked="PanelSize_Checked" />
+                <RadioButton x:Name="PanelMedium" Style="{StaticResource EdgeChip}" GroupName="PanelSize" Content="中" Tag="medium"
+                             ToolTip="画面の 4 分の 3 の長さ" Checked="PanelSize_Checked" />
+                <RadioButton x:Name="PanelLarge" Style="{StaticResource EdgeChip}" GroupName="PanelSize" Content="大" Tag="large" Margin="0"
+                             ToolTip="画面いっぱいの長さ" Checked="PanelSize_Checked" />
+              </StackPanel>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE799;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="棚の長さ" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="小さくすると、取っ手の横に短い棚が出ます（中 = 画面の 4 分の 3、大 = 画面いっぱい）。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- 動作 -->
+        <StackPanel x:Name="BehaviorPage" Visibility="Collapsed">
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE7C9;" VerticalAlignment="Top" Margin="2,1,18,0" />
+              <StackPanel>
+                <TextBlock Style="{StaticResource SettingName}" Text="棚を開くとき" />
+                <RadioButton x:Name="OpenByClick" GroupName="OpenMode" Margin="0,10,0,0"
+                             Content="取っ手をクリックしたとき" Checked="OpenMode_Checked" />
+                <RadioButton x:Name="OpenByHover" GroupName="OpenMode" Margin="0,8,0,2" Checked="OpenMode_Checked">
+                  <StackPanel>
+                    <TextBlock Text="取っ手にマウスを乗せたとき" />
+                    <TextBlock Style="{StaticResource SettingHint}" Text="棚からマウスを離すと閉じます。" />
+                  </StackPanel>
+                </RadioButton>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <ComboBox x:Name="HotkeyBox" DockPanel.Dock="Right" MinWidth="180" VerticalAlignment="Center"
+                        AutomationProperties.Name="ショートカットキー" SelectionChanged="Hotkey_SelectionChanged" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE765;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="ショートカットキー" />
+                <TextBlock Style="{StaticResource SettingHint}"
+                           Text="どのアプリを使っていても、このキーで棚が開きます。文字で探して ↑↓ で選び、Enter で貼り付けます。" />
+                <TextBlock x:Name="HotkeyWarning" Style="{StaticResource SettingHint}" Visibility="Collapsed"
+                           Foreground="{DynamicResource Hkd.Critical}"
+                           Text="このキーは、ほかのアプリが使っているため使えません。別のキーを選んでください。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <CheckBox x:Name="FullscreenSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                        AutomationProperties.Name="全画面のときは取っ手を隠す" Click="Fullscreen_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE740;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="全画面のときは取っ手を隠す" />
+                <TextBlock Style="{StaticResource SettingHint}"
+                           Text="ゲームや動画を全画面で見ている間は、取っ手を隠して、マウスが端に行っても開かないようにします。ショートカットキーでは開けます。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <CheckBox x:Name="CloseAfterPasteSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                        AutomationProperties.Name="貼り付けたら棚を閉じる" Click="CloseAfterPaste_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE77F;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="貼り付けたら棚を閉じる" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="オフにすると、棚を開いたまま続けて貼り付けられます。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <CheckBox x:Name="MoveToTopSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                        AutomationProperties.Name="貼り付けたものを上へ動かす" Click="MoveToTop_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE74A;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="貼り付けたものを上へ動かす" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="貼り付けたりコピーしたりしたカードを、棚のいちばん上に動かします。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <CheckBox x:Name="StartupSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                        AutomationProperties.Name="Windows にサインインしたら起動する" Click="Startup_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE7E8;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="Windows にサインインしたら起動する" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="パソコンを使い始めると、自動で Hikidana が動き始めます。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- 見た目 -->
+        <StackPanel x:Name="AppearancePage" Visibility="Collapsed">
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <ComboBox x:Name="ThemeBox" DockPanel.Dock="Right" MinWidth="200" VerticalAlignment="Center"
+                        AutomationProperties.Name="色" SelectionChanged="Theme_SelectionChanged">
+                <ComboBoxItem Content="Windows に合わせる" Tag="system" />
+                <ComboBoxItem Content="ライト" Tag="light" />
+                <ComboBoxItem Content="ダーク" Tag="dark" />
+              </ComboBox>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE790;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="色" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="棚とこの画面を、明るい色か暗い色にします。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <RadioButton x:Name="TextSmall" Style="{StaticResource EdgeChip}" GroupName="TextSize" Content="小" Tag="small"
+                             ToolTip="小さな文字（たくさん見える）" Checked="TextSize_Checked" />
+                <RadioButton x:Name="TextMedium" Style="{StaticResource EdgeChip}" GroupName="TextSize" Content="標準" Tag="medium"
+                             ToolTip="ふつうの文字" Checked="TextSize_Checked" />
+                <RadioButton x:Name="TextLarge" Style="{StaticResource EdgeChip}" GroupName="TextSize" Content="大" Tag="large" Margin="0"
+                             ToolTip="大きな文字（読みやすい）" Checked="TextSize_Checked" />
+              </StackPanel>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE8E9;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="棚の文字の大きさ" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="棚の文字を大きく・小さくします。カードと画像も同じ割合で変わり、棚の幅も合わせて変わります。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <CheckBox x:Name="SignalSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                        AutomationProperties.Name="棚に入ったら取っ手で知らせる" Click="Signal_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE722;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="棚に入ったら取っ手で知らせる" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="スクリーンショットやコピーしたものが棚に入ると、取っ手から印が少し出ます。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <ComboBox x:Name="SignalStyleBox" MinWidth="200" VerticalAlignment="Center"
+                          AutomationProperties.Name="知らせの印" SelectionChanged="SignalStyle_SelectionChanged">
+                  <ComboBoxItem Tag="kind">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="&#xE722;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" VerticalAlignment="Center" />
+                      <TextBlock Text="しまったものの種類" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </ComboBoxItem>
+                  <ComboBoxItem Tag="check">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" VerticalAlignment="Center" />
+                      <TextBlock Text="チェック" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </ComboBoxItem>
+                  <ComboBoxItem Tag="plain">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="&#xE7E6;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" VerticalAlignment="Center" />
+                      <TextBlock Text="印なし（色が光るだけ）" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </ComboBoxItem>
+                </ComboBox>
+                <Button x:Name="PreviewSignalButton" Content="試す" MinWidth="64" Margin="8,0,0,0" Padding="12,5" Click="PreviewSignal_Click"
+                        ToolTip="取っ手を 1 回光らせて見せます" />
+              </StackPanel>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE7E7;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="知らせの印" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="取っ手から出る印の形。「試す」で、いまの画面の端の取っ手が光ります。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <CheckBox x:Name="SoundsSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                        AutomationProperties.Name="効果音" Click="Sounds_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE767;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="効果音" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="棚を開け閉めしたときと、貼り付けたときに、小さな音を鳴らします。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- 記録と片付け -->
+        <StackPanel x:Name="RecordsPage" Visibility="Collapsed">
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <CheckBox x:Name="PausedSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                        AutomationProperties.Name="記録を止める" Click="Paused_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE769;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="記録を止める" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="止めている間は、コピーしたものもスクリーンショットも、棚に入りません。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <ComboBox x:Name="MaxItemsBox" DockPanel.Dock="Right" MinWidth="140" VerticalAlignment="Center"
+                        AutomationProperties.Name="しまっておく数" SelectionChanged="MaxItems_SelectionChanged" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE8F1;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="しまっておく数" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="これより多くなると、古いものから消えます。ピン留めしたものは数に入らず、消えません。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <TextBlock Style="{StaticResource SectionTitle}" Text="片付け" />
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE81C;" VerticalAlignment="Top" Margin="2,1,18,0" />
+              <StackPanel>
+                <TextBlock Style="{StaticResource SettingName}" Text="古いものを自動で消す" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="最後に使ってから時間がたったものを消します。ピン留めしたものは消えません。" />
+                <WrapPanel Margin="0,10,0,0">
+                  <ComboBox x:Name="AutoDeleteBox" MinWidth="150" Margin="0,0,8,4" AutomationProperties.Name="自動で消すまでの時間"
+                            SelectionChanged="AutoDelete_SelectionChanged" />
+                  <ComboBox x:Name="AutoDeleteScopeBox" MinWidth="220" Margin="0,0,8,4" AutomationProperties.Name="自動で消すもの"
+                            SelectionChanged="AutoDelete_SelectionChanged">
+                    <ComboBoxItem Content="スクリーンショットを消す" Tag="screenshots" />
+                    <ComboBoxItem Content="ピン留め以外をすべて消す" Tag="all" />
+                  </ComboBox>
+                </WrapPanel>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <ComboBox x:Name="ClearOnStartBox" DockPanel.Dock="Right" MinWidth="220" VerticalAlignment="Center"
+                        AutomationProperties.Name="起動したときに消すもの" SelectionChanged="ClearOnStart_SelectionChanged">
+                <ComboBoxItem Content="消さない" Tag="off" />
+                <ComboBoxItem Content="ピン留め以外のスクリーンショット" Tag="screenshots" />
+                <ComboBoxItem Content="ピン留め以外すべて" Tag="all" />
+              </ComboBox>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE777;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="起動したときに消す" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="パソコンを起動したときなど、Hikidana が起動するたびに消します。新しい版に入れ替えたときは消しません。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE74D;" VerticalAlignment="Top" Margin="2,1,18,0" />
+              <StackPanel>
+                <TextBlock Style="{StaticResource SettingName}" Text="棚を片付ける" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="ピン留めしたものは残ります。消したあと少しの間は、知らせの「元に戻す」で戻せます。" />
+                <WrapPanel Margin="0,10,0,0">
+                  <Button x:Name="ClearScreenshotsButton" Content="スクリーンショットを消す" Margin="0,0,8,4" Padding="12,5"
+                          Click="ClearScreenshots_Click" />
+                  <Button x:Name="ClearAllButton" Content="すべて消す" Margin="0,0,8,4" Padding="12,5" Click="ClearAll_Click" />
+                </WrapPanel>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- このアプリについて -->
+        <StackPanel x:Name="AboutPage" Visibility="Collapsed">
+          <Border Style="{StaticResource SettingCard}" Padding="16,14,16,10">
+            <StackPanel>
+              <DockPanel>
+                <Image x:Name="AppIcon" Width="32" Height="32" Margin="0,0,14,0" VerticalAlignment="Center"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock Text="Hikidana" FontWeight="SemiBold" />
+                  <TextBlock x:Name="VersionText" Style="{StaticResource SettingHint}" Margin="0,0,0,0" />
+                  <TextBlock x:Name="UpdateStatusText" Style="{StaticResource SettingHint}" />
+                </StackPanel>
+              </DockPanel>
+              <WrapPanel Margin="46,12,0,0">
+                <Button x:Name="InstallUpdateButton" Style="{StaticResource AccentButton}" Margin="0,0,8,6" Visibility="Collapsed"
+                        Content="新しい版に入れ替える" Click="InstallUpdate_Click" />
+                <Button x:Name="CheckUpdateButton" Content="新しい版を確かめる" Margin="0,0,8,6" Padding="12,5" Click="CheckUpdate_Click" />
+                <Button x:Name="ProjectButton" Content="GitHub のページを開く" Margin="0,0,8,6" Padding="12,5" Click="Project_Click"
+                        ToolTip="出した版の一覧や、このアプリのソースがあります" />
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <CheckBox x:Name="UpdateSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}"
+                        AutomationProperties.Name="新しい版を自動で確かめる" Click="UpdateSwitch_Click" />
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE895;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="新しい版を自動で確かめる" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="新しい版が出たら知らせます。ボタン 1 つで入れ替えて、起動し直します（棚の中身と設定はそのままです）。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource SettingCard}">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="しまってある場所" Margin="0,0,8,0" Padding="12,5" Click="OpenData_Click" />
+                <Button Content="記録（ログ）の場所" Padding="12,5" Click="OpenLogs_Click" />
+              </StackPanel>
+              <TextBlock Style="{StaticResource SettingIcon}" Text="&#xE8B7;" />
+              <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource SettingName}" Text="フォルダーを開く" />
+                <TextBlock Style="{StaticResource SettingHint}" Text="棚の中身と設定、うまく動かないときの記録（ログ）が入っています。" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
 </Window>

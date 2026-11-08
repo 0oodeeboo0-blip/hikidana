@@ -204,6 +204,20 @@ public partial class ShelfWindow : Window
     /// 中身の大きさ（DIP）と、どちら側にくっつけるか。開くときにウインドウを端から伸ばすので、
     /// 中身は端と反対の側にくっつけておく（端から滑り出てくるように見える）。
     /// </summary>
+    /// <summary>
+    /// 中身の倍率（設定の文字の大きさ）。中身をまとめて拡大・縮小するので、文字も記号も画像も同じ割合で変わる。
+    /// 大きさ（<see cref="SetContentSize"/>）は、倍率をかける前の大きさで渡す。
+    /// </summary>
+    public void SetContentScale(double scale)
+    {
+        if (Root.LayoutTransform is ScaleTransform current && Math.Abs(current.ScaleX - scale) < 0.0001)
+        {
+            return;
+        }
+
+        Root.LayoutTransform = Math.Abs(scale - 1) < 0.0001 ? Transform.Identity : new ScaleTransform(scale, scale);
+    }
+
     public void SetContentSize(double width, double height, Hikidana.Core.Layout.ShelfEdge edge)
     {
         Root.Width = width;

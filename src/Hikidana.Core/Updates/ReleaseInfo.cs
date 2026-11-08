@@ -10,6 +10,9 @@ public sealed record ReleaseInfo(string Tag, Version Version, string PageUrl, st
     /// <summary>新しい版を確かめる所（GitHub の API。ログインは要らない）。</summary>
     public const string LatestUrl = "https://api.github.com/repos/0oodeeboo0-blip/hikidana/releases/latest";
 
+    /// <summary>このアプリの GitHub のページ。</summary>
+    public const string ProjectUrl = "https://github.com/0oodeeboo0-blip/hikidana";
+
     /// <summary>配る zip の名前の終わり（例: Hikidana-0.2.0-win-x64.zip）。</summary>
     public const string ZipSuffix = "-win-x64.zip";
 

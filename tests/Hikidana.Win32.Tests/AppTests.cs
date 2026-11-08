@@ -341,7 +341,15 @@ public sealed class AppTests
         Assert.True(movedLeft, $"取っ手が左の端へ動きませんでした（いま ({moved.Left}, {moved.Top})-({moved.Right}, {moved.Bottom})）。");
         Console.WriteLine($"       動いた取っ手: ({moved.Left}, {moved.Top})-({moved.Right}, {moved.Bottom})");
 
-        // 開き方を「マウスを乗せたとき」にする
+        // 左の「動作」を押してから、開き方を「マウスを乗せたとき」にする
+        if (await Automation.WaitForCenterAsync(window, "NavBehavior", TimeSpan.FromSeconds(3)) is not { } behavior)
+        {
+            throw new AssertionException("設定の画面の左に「動作」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(behavior.X, behavior.Y, hoverMilliseconds: 300);
+        await Task.Delay(400);
+        ScreenCapture.Save("app-settings-behavior");
         if (await Automation.WaitForCenterAsync(window, "OpenByHover", TimeSpan.FromSeconds(3)) is not { } hover)
         {
             throw new AssertionException("設定の画面に「取っ手にマウスを乗せたとき」が見つかりません。");
@@ -362,6 +370,96 @@ public sealed class AppTests
         Assert.True(saved, $"設定のファイルに残っていません（edge: {edge}、openOnHover: {openOnHover}）。");
     }
 
+    [Fact(WindowsOnly = true)]
+    public async Task SettingsResizeTheHandleAndTheShelf()
+    {
+        using var app = await RunningApp.StartAsync("--settings", "position");
+        var window = await app.WaitForWindowAsync("Hikidana の設定", TimeSpan.FromSeconds(10));
+        Assert.NotEqual((nint)0, window, "--settings で起動しても、設定の画面が出ませんでした。");
+        await Task.Delay(800);
+        Assert.True(TestNative.GetWindowRect(app.Handle, out var before));
+
+        // 取っ手を「大」にすると、すぐ長くなる
+        if (await ScrollIntoViewAsync(window, "HandleLarge") is not { } large)
+        {
+            ScreenCapture.Save("failed-app-settings-sizes");
+            throw new AssertionException("設定の画面に、取っ手の大きさの「大」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(large.X, large.Y, hoverMilliseconds: 300);
+        TestNative.RECT after = default;
+        var grew = await Desktop.WaitUntilAsync(
+            () => TestNative.GetWindowRect(app.Handle, out after) && after.Bottom - after.Top > (before.Bottom - before.Top) * 1.4,
+            TimeSpan.FromSeconds(3));
+        Assert.True(grew, $"取っ手が長くなりません（前 {before.Bottom - before.Top}、いま {after.Bottom - after.Top}）。");
+
+        // 棚の長さを「小」にする。どちらも設定のファイルに残る
+        if (await ScrollIntoViewAsync(window, "PanelSmall") is not { } small)
+        {
+            ScreenCapture.Save("failed-app-settings-sizes");
+            throw new AssertionException("設定の画面に、棚の長さの「小」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(small.X, small.Y, hoverMilliseconds: 300);
+        var saved = await Desktop.WaitUntilAsync(() => DemoSetting("handleSize") == "large" && DemoSetting("panelSize") == "small", TimeSpan.FromSeconds(3));
+        await Task.Delay(400);
+        ScreenCapture.Save("app-settings-sizes");
+        Assert.True(saved, $"設定のファイルに残っていません（handleSize: {DemoSetting("handleSize")}、panelSize: {DemoSetting("panelSize")}）。");
+
+        // 棚を開くと、画面の半分くらいの長さで、取っ手の横に出る
+        await TestMouse.ClickAsync(after.Right - 3, (after.Top + after.Bottom) / 2, hoverMilliseconds: 600);
+        var shelf = await app.WaitForWindowAsync("Hikidana", TimeSpan.FromSeconds(5));
+        Assert.NotEqual((nint)0, shelf, "取っ手をクリックしても、棚が開きませんでした。");
+        await Task.Delay(600);
+        ScreenCapture.Save("app-shelf-small");
+        Assert.True(TestNative.GetWindowRect(shelf, out var panel));
+        var screen = TestNative.GetSystemMetrics(1);
+        var height = panel.Bottom - panel.Top;
+        var middle = (after.Top + after.Bottom) / 2;
+        Assert.True(height > screen * 0.3 && height < screen * 0.6, $"棚の長さが半分くらいになっていません（棚 {height}、画面 {screen}）。");
+        Assert.True(panel.Top <= middle && panel.Bottom >= middle, $"棚が取っ手の横にありません（棚 {panel.Top}〜{panel.Bottom}、取っ手の真ん中 {middle}）。");
+    }
+
+    [Fact(WindowsOnly = true)]
+    public async Task FullscreenAppHidesTheHandleUntilItEnds()
+    {
+        var page = await ChromiumPage.SharedAsync();
+        using var app = await RunningApp.StartAsync();
+        await app.FocusAsync(page);
+        Assert.True(TestNative.IsWindowVisible(app.Handle), "はじめから取っ手が見えていません。");
+
+        // テストのページの「全画面」を押す（動画を全画面で見るときと同じ、ページの全画面）
+        var viewport = page.Viewport();
+        await TestMouse.ClickAsync(viewport.Left + 24 + 70, viewport.Top + 84 + 22, hoverMilliseconds: 300);
+        var screen = (Width: TestNative.GetSystemMetrics(0), Height: TestNative.GetSystemMetrics(1));
+        try
+        {
+            var hidden = await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(app.Handle), TimeSpan.FromSeconds(5));
+            await Task.Delay(600);
+            ScreenCapture.Save("app-fullscreen");
+            Assert.True(TestNative.GetWindowRect(page.Window, out var full));
+            Assert.True(
+                hidden,
+                $"全画面にしても、取っ手が隠れませんでした（Edge ({full.Left}, {full.Top})-({full.Right}, {full.Bottom})、画面 {screen.Width}×{screen.Height}、前面: {Desktop.ForegroundDescription()}）。");
+        }
+        finally
+        {
+            // Esc で全画面をやめる（やめられなければ、もう一度「全画面」を押す）
+            TestKeys.Down(TestKeys.VK_ESCAPE);
+            await Task.Delay(60);
+            TestKeys.Up(TestKeys.VK_ESCAPE);
+            var ended = await Desktop.WaitUntilAsync(() => TestNative.GetWindowRect(page.Window, out var r) && r.Right - r.Left < screen.Width, TimeSpan.FromSeconds(3));
+            if (!ended)
+            {
+                await TestMouse.ClickAsync(24 + 70, 84 + 22, hoverMilliseconds: 300);
+                await Desktop.WaitUntilAsync(() => TestNative.GetWindowRect(page.Window, out var r) && r.Right - r.Left < screen.Width, TimeSpan.FromSeconds(3));
+            }
+        }
+
+        var shown = await Desktop.WaitUntilAsync(() => TestNative.IsWindowVisible(app.Handle), TimeSpan.FromSeconds(5));
+        Assert.True(shown, "全画面をやめても、取っ手が出てきません。");
+    }
+
     /// <summary>棚のいちばん上のカードの、画像のあたり（本当の画素）。</summary>
     private static (int X, int Y) FirstCardPoint(nint shelf)
     {
@@ -375,7 +473,7 @@ public sealed class AppTests
     [Fact(WindowsOnly = true)]
     public async Task SettingsSwitchToDarkAtOnceAndTheShelfFollows()
     {
-        using var app = await RunningApp.StartAsync("--settings");
+        using var app = await RunningApp.StartAsync("--settings", "appearance");
         var window = await app.WaitForWindowAsync("Hikidana の設定", TimeSpan.FromSeconds(10));
         Assert.NotEqual((nint)0, window, "--settings で起動しても、設定の画面が出ませんでした。");
         await Task.Delay(800);

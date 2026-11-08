@@ -35,31 +35,27 @@ public readonly record struct PixelRect(int X, int Y, int Width, int Height)
 /// </summary>
 public sealed class ShelfLayout
 {
-    /// <summary>棚の幅（右と左の端のとき）。上と下の端のときも、この幅の縦長の棚にする。</summary>
+    /// <summary>棚の幅（文字の大きさがふつうのとき）。上と下の端のときも、この幅の縦長の棚にする。</summary>
     public const double PanelWidth = 360;
 
-    /// <summary>上と下の端のときの、棚のいちばん大きな高さ。</summary>
-    public const double PanelMaxHeightTopBottom = 640;
+    /// <summary>棚の、端に沿ったいちばん短い長さ（文字の大きさがふつうのとき）。小さくしても、これより短くはしない。</summary>
+    public const double PanelMinLength = 360;
 
     /// <summary>棚と作業領域の端のすきま。</summary>
     public const double PanelMargin = 10;
 
-    /// <summary>取っ手の、端に沿った長さ。</summary>
-    public const double HandleLength = 96;
-
-    /// <summary>取っ手の厚み（マウスを乗せて広がったとき）。ふだんは端に細い線だけが見える。</summary>
-    public const double HandleThickness = 28;
-
     /// <summary>知らせと、取っ手・棚のすきま。</summary>
     public const double ToastGap = 10;
 
-    private ShelfLayout(ShelfEdge edge, PixelRect workArea, double scale, PixelRect handle, PixelRect panel)
+    private ShelfLayout(ShelfEdge edge, PixelRect workArea, double scale, PixelRect handle, PixelRect panel, HandleMetrics handleMetrics, double contentScale)
     {
         Edge = edge;
         WorkArea = workArea;
         Scale = scale;
         Handle = handle;
         Panel = panel;
+        HandleMetrics = handleMetrics;
+        ContentScale = contentScale;
     }
 
     public ShelfEdge Edge { get; }
@@ -74,6 +70,12 @@ public sealed class ShelfLayout
 
     /// <summary>棚のウインドウ。</summary>
     public PixelRect Panel { get; }
+
+    /// <summary>取っ手の大きさ（DIP。ふだん見える線と、マウスを受ける帯）。</summary>
+    public HandleMetrics HandleMetrics { get; }
+
+    /// <summary>棚の中身の倍率（文字の大きさ。1 = ふつう）。</summary>
+    public double ContentScale { get; }
 
     /// <summary>
     /// 棚の「届く範囲」: 棚の四角を、端の側へ作業領域の端まで広げて、取っ手の場所も含めたもの。
@@ -105,19 +107,23 @@ public sealed class ShelfLayout
     /// <param name="workArea">その画面の作業領域（本当の画素）。</param>
     /// <param name="scale">その画面の拡大率。</param>
     /// <param name="handlePosition">取っ手の位置（端に沿って 0 = 始め〜1 = 終わり。0.5 で真ん中）。</param>
-    public static ShelfLayout Compute(ShelfEdge edge, PixelRect workArea, double scale, double handlePosition)
+    /// <param name="options">取っ手と棚の大きさ、文字の大きさ。null ならふつう（取っ手は中、棚は大）。</param>
+    public static ShelfLayout Compute(ShelfEdge edge, PixelRect workArea, double scale, double handlePosition, ShelfLayoutOptions? options = null)
     {
         if (workArea.IsEmpty)
         {
             throw new ArgumentException("作業領域が空です。", nameof(workArea));
         }
 
+        options ??= ShelfLayoutOptions.Default;
         scale = double.IsFinite(scale) && scale > 0 ? scale : 1;
         handlePosition = double.IsFinite(handlePosition) ? Math.Clamp(handlePosition, 0, 1) : 0.5;
+        var content = double.IsFinite(options.ContentScale) && options.ContentScale > 0 ? Math.Clamp(options.ContentScale, 0.5, 2) : 1;
+        var metrics = HandleMetrics.For(options.HandleSize);
         var vertical = edge is ShelfEdge.Right or ShelfEdge.Left;
         var available = vertical ? workArea.Height : workArea.Width;
-        var length = Math.Min(Px(HandleLength, scale), available);
-        var thickness = Math.Min(Px(HandleThickness, scale), vertical ? workArea.Width : workArea.Height);
+        var length = Math.Min(Px(metrics.Length, scale), available);
+        var thickness = Math.Min(Px(metrics.Thickness, scale), vertical ? workArea.Width : workArea.Height);
         var along = (int)Math.Round((available - length) * handlePosition);
         var handle = edge switch
         {
@@ -127,24 +133,28 @@ public sealed class ShelfLayout
             _ => new PixelRect(workArea.X + along, workArea.Bottom - thickness, length, thickness),
         };
 
+        // 棚は縦長。高さは、使える高さに対して小 = 半分・中 = 4 分の 3・大 = いっぱい（短すぎないようにする）
         var margin = Px(PanelMargin, scale);
-        var width = Math.Min(Px(PanelWidth, scale), workArea.Width - 2 * margin);
+        var width = Math.Max(1, Math.Min(Px(PanelWidth * content, scale), workArea.Width - 2 * margin));
+        var span = Math.Max(1, workArea.Height - 2 * margin);
+        var shortest = Math.Min(span, Px(PanelMinLength * content, scale));
+        var height = Math.Clamp((int)Math.Round(span * ShelfLayoutOptions.LengthFraction(options.PanelSize)), shortest, span);
         PixelRect panel;
         if (vertical)
         {
-            var height = workArea.Height - 2 * margin;
+            // 短くしたときは、取っ手の横に出す（画面からはみ出さないように）
             var x = edge == ShelfEdge.Right ? workArea.Right - margin - width : workArea.X + margin;
-            panel = new PixelRect(x, workArea.Y + margin, width, height);
+            var y = Math.Clamp(handle.CenterY - height / 2, workArea.Y + margin, Math.Max(workArea.Y + margin, workArea.Bottom - margin - height));
+            panel = new PixelRect(x, y, width, height);
         }
         else
         {
-            var height = Math.Min(Px(PanelMaxHeightTopBottom, scale), workArea.Height - 2 * margin);
-            var x = Math.Clamp(handle.CenterX - width / 2, workArea.X + margin, workArea.Right - margin - width);
+            var x = Math.Clamp(handle.CenterX - width / 2, workArea.X + margin, Math.Max(workArea.X + margin, workArea.Right - margin - width));
             var y = edge == ShelfEdge.Top ? workArea.Y + margin : workArea.Bottom - margin - height;
             panel = new PixelRect(x, y, width, height);
         }
 
-        return new ShelfLayout(edge, workArea, scale, handle, panel);
+        return new ShelfLayout(edge, workArea, scale, handle, panel, metrics, content);
     }
 
     /// <summary>DIP を本当の画素にする。</summary>

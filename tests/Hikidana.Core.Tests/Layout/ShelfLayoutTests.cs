@@ -29,11 +29,11 @@ public sealed class ShelfLayoutTests
     }
 
     [Fact]
-    public void TopAndBottomEdgesUseShortPanelUnderTheHandle()
+    public void TopAndBottomEdgesPutThePanelUnderTheHandle()
     {
         var top = ShelfLayout.Compute(ShelfEdge.Top, WorkArea, 1.0, 0.5);
         Assert.Equal(new PixelRect((1920 - 96) / 2, 0, 96, 28), top.Handle);
-        Assert.Equal(640, top.Panel.Height);
+        Assert.Equal(1032 - 20, top.Panel.Height);
         Assert.Equal(10, top.Panel.Y);
         Assert.Equal(top.Handle.CenterX, top.Panel.CenterX);
         Assert.False(top.IsVertical);
@@ -123,7 +123,7 @@ public sealed class ShelfLayoutTests
 
         var top = ShelfLayout.Compute(ShelfEdge.Top, WorkArea, 1.0, 0.5);
         Assert.Equal(top.Panel.Y, top.PanelOpening(0.5).Y);
-        Assert.Equal(320, top.PanelOpening(0.5).Height);
+        Assert.Equal((1032 - 20) / 2, top.PanelOpening(0.5).Height);
 
         var bottom = ShelfLayout.Compute(ShelfEdge.Bottom, WorkArea, 1.0, 0.5);
         Assert.Equal(bottom.Panel.Bottom, bottom.PanelOpening(0.5).Bottom);
@@ -142,5 +142,59 @@ public sealed class ShelfLayoutTests
         var top = ShelfLayout.Compute(ShelfEdge.Top, WorkArea, 1.0, 0.5);
         Assert.True(top.PanelReach.Contains(top.Handle.CenterX, 0));
         Assert.False(top.PanelReach.Contains(top.Handle.CenterX, top.Panel.Bottom + 5));
+    }
+
+    [Fact]
+    public void HandleSizesChangeTheHandle()
+    {
+        var small = ShelfLayout.Compute(ShelfEdge.Right, WorkArea, 1.0, 0.5, new ShelfLayoutOptions { HandleSize = SizeChoice.Small });
+        Assert.Equal(new PixelRect(1920 - 24, (1032 - 72) / 2, 24, 72), small.Handle);
+        Assert.Equal(6, small.HandleMetrics.Hit);
+
+        var large = ShelfLayout.Compute(ShelfEdge.Bottom, WorkArea, 1.5, 0.5, new ShelfLayoutOptions { HandleSize = SizeChoice.Large });
+        Assert.Equal(216, large.Handle.Width);
+        Assert.Equal(48, large.Handle.Height);
+        Assert.Equal(16, large.HandleMetrics.Hit);
+        Assert.Equal(10, ShelfLayout.Compute(ShelfEdge.Right, WorkArea, 1.0, 0.5).HandleMetrics.Hit, "ふつうは中");
+    }
+
+    [Fact]
+    public void ShorterPanelsSitBesideTheHandle()
+    {
+        // 中: 使える高さ（1012）の 4 分の 3。取っ手の真ん中に合わせる
+        var medium = ShelfLayout.Compute(ShelfEdge.Right, WorkArea, 1.0, 0.5, new ShelfLayoutOptions { PanelSize = SizeChoice.Medium });
+        Assert.Equal(759, medium.Panel.Height);
+        Assert.Equal(medium.Handle.CenterY, medium.Panel.CenterY);
+        Assert.Equal(1920 - 10 - 360, medium.Panel.X);
+
+        // 取っ手がいちばん上なら、棚も上に寄せる（はみ出さない）
+        var top = ShelfLayout.Compute(ShelfEdge.Left, WorkArea, 1.0, 0.0, new ShelfLayoutOptions { PanelSize = SizeChoice.Small });
+        Assert.Equal(506, top.Panel.Height);
+        Assert.Equal(10, top.Panel.Y);
+        var bottom = ShelfLayout.Compute(ShelfEdge.Left, WorkArea, 1.0, 1.0, new ShelfLayoutOptions { PanelSize = SizeChoice.Small });
+        Assert.Equal(1032 - 10, bottom.Panel.Bottom);
+
+        // 上の端の棚も短くなる
+        var topEdge = ShelfLayout.Compute(ShelfEdge.Top, WorkArea, 1.0, 0.5, new ShelfLayoutOptions { PanelSize = SizeChoice.Medium });
+        Assert.Equal(759, topEdge.Panel.Height);
+        Assert.Equal(10, topEdge.Panel.Y);
+
+        // 低い画面でも、短くしすぎない（360 より短くしない。画面がもっと低ければ画面いっぱい）
+        var low = new PixelRect(0, 0, 1280, 600);
+        Assert.Equal(360, ShelfLayout.Compute(ShelfEdge.Right, low, 1.0, 0.5, new ShelfLayoutOptions { PanelSize = SizeChoice.Small }).Panel.Height);
+        Assert.Equal(300 - 20, ShelfLayout.Compute(ShelfEdge.Right, new PixelRect(0, 0, 1280, 300), 1.0, 0.5, new ShelfLayoutOptions { PanelSize = SizeChoice.Small }).Panel.Height);
+    }
+
+    [Fact]
+    public void LargerTextWidensThePanel()
+    {
+        var large = ShelfLayout.Compute(ShelfEdge.Right, WorkArea, 1.0, 0.5, new ShelfLayoutOptions { ContentScale = ShelfLayoutOptions.ScaleFor(SizeChoice.Large) });
+        Assert.Equal(414, large.Panel.Width);
+        Assert.Equal(1920 - 10 - 414, large.Panel.X);
+        Assert.Equal(1.15, large.ContentScale);
+
+        var small = ShelfLayout.Compute(ShelfEdge.Right, WorkArea, 2.0, 0.5, new ShelfLayoutOptions { ContentScale = ShelfLayoutOptions.ScaleFor(SizeChoice.Small) });
+        Assert.Equal(648, small.Panel.Width);
+        Assert.Equal(1.0, ShelfLayout.Compute(ShelfEdge.Right, WorkArea, 1.0, 0.5, new ShelfLayoutOptions { ContentScale = double.NaN }).ContentScale);
     }
 }

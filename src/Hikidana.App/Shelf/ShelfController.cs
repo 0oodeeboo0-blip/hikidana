@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Hikidana.App.Interop;
 using Hikidana.Core.Clips;
 using Hikidana.Core.Diagnostics;
+using Hikidana.Core.Feedback;
 using Hikidana.Core.Layout;
 using Hikidana.Core.Paste;
 using Hikidana.Core.Settings;
@@ -40,6 +41,9 @@ internal sealed partial class ShelfController : IDisposable
     private readonly DispatcherTimer clock = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly DispatcherTimer leaveTimer = new() { Interval = TimeSpan.FromMilliseconds(700) };
     private readonly DispatcherTimer pruneTimer = new() { Interval = TimeSpan.FromMinutes(10) };
+
+    /// <summary>全画面のアプリが前にあるかを見る（取っ手を隠すため）。</summary>
+    private readonly DispatcherTimer fullscreenTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly GlobalHotkey hotkey = new();
     private readonly Dispatcher dispatcher;
     private ShelfLayout layout = null!;
@@ -55,6 +59,12 @@ internal sealed partial class ShelfController : IDisposable
     private bool relayoutQueued;
     private bool dialogOpen;
     private bool hotkeyWorks = true;
+
+    /// <summary>全画面のアプリが前にあるので、取っ手を隠している。</summary>
+    private bool fullscreenHidden;
+
+    /// <summary>新しい版の知らせを、全画面が終わるまで待たせている。</summary>
+    private bool updateWaiting;
     private bool disposed;
 
     /// <param name="startup">サインインしたら起動する設定。見本で動かすときは null（本物の設定を変えない）。</param>
@@ -113,7 +123,7 @@ internal sealed partial class ShelfController : IDisposable
         shelf.PausedChanged += SetPaused;
         shelf.OpenDataRequested += () => OpenFolder(store.Root);
         shelf.OpenLogsRequested += () => OpenFolder(Log.Folder ?? store.Root);
-        shelf.SettingsRequested += OpenSettings;
+        shelf.SettingsRequested += () => OpenSettings();
         shelf.ClearRequested += Clear;
         shelf.PasteManyRequested += OnPasteManyRequested;
         shelf.DeleteManyRequested += OnDeleteManyRequested;
@@ -146,6 +156,11 @@ internal sealed partial class ShelfController : IDisposable
         clock.Start();
         pruneTimer.Tick += (_, _) => PruneOld();
         pruneTimer.Start();
+        fullscreenTimer.Tick += (_, _) => CheckFullscreen();
+        if (settings.HideInFullscreen)
+        {
+            fullscreenTimer.Start();
+        }
         ApplyHotkey();
         if (updates is not null)
         {
@@ -172,7 +187,8 @@ internal sealed partial class ShelfController : IDisposable
         tray.MenuItems = TrayMenu;
         tray.MenuItemSelected += OnTrayMenuItem;
 
-        handle.Show();
+        CheckFullscreen();
+        UpdateHandleVisibility();
         if (open)
         {
             Open();
@@ -211,6 +227,7 @@ internal sealed partial class ShelfController : IDisposable
         isOpen = true;
         AnimateOpening();
         handle.Hide();
+        Play(SoundCue.Open);
         dismiss.Start();
         if (settings.OpenOnHover)
         {
@@ -222,8 +239,9 @@ internal sealed partial class ShelfController : IDisposable
     /// <summary>
     /// 閉じる。<paramref name="restoreFocus"/> なら、検索で棚にキーボードを渡していたとき、元のアプリに戻す
     /// （ほかのアプリをクリックして閉じたときや、貼り付けで閉じたときは戻さない）。
+    /// <paramref name="sound"/> が false なら、効果音を鳴らさない（貼り付けたときは、貼り付けの音を鳴らす）。
     /// </summary>
-    public void Close(bool restoreFocus = false)
+    public void Close(bool restoreFocus = false, bool sound = true)
     {
         if (!isOpen)
         {
@@ -237,8 +255,13 @@ internal sealed partial class ShelfController : IDisposable
         StopOpening();
         shelf.Hide();
         shelf.ResetView();
-        handle.Show();
         isOpen = false;
+        UpdateHandleVisibility();
+        if (sound)
+        {
+            Play(SoundCue.Close);
+        }
+
         if (wasTyping && restoreFocus && lastExternal is { Exists: true } target)
         {
             WindowHelper.BringToFront(target.Handle);
@@ -297,6 +320,7 @@ internal sealed partial class ShelfController : IDisposable
         clock.Stop();
         leaveTimer.Stop();
         pruneTimer.Stop();
+        fullscreenTimer.Stop();
         updateTimer.Stop();
         dismiss.Dispose();
         hotkey.Dispose();
@@ -312,10 +336,14 @@ internal sealed partial class ShelfController : IDisposable
     private void Relayout()
     {
         var monitor = MonitorInfo.Find(settings.Monitor);
-        layout = ShelfLayout.Compute(settings.Edge, monitor.WorkArea, monitor.Scale, settings.HandlePosition);
+        layout = ShelfLayout.Compute(settings.Edge, monitor.WorkArea, monitor.Scale, settings.HandlePosition, settings.LayoutOptions());
         handle.Apply(layout);
         WindowHelper.Place(handle, layout.Handle);
-        shelf.SetContentSize(layout.Panel.Width / layout.Scale, layout.Panel.Height / layout.Scale, layout.Edge);
+
+        // 文字の大きさは、棚の中身をまとめて拡大・縮小する（棚の幅も、その分だけ広い・狭い）
+        var content = layout.Scale * layout.ContentScale;
+        shelf.SetContentScale(layout.ContentScale);
+        shelf.SetContentSize(layout.Panel.Width / content, layout.Panel.Height / content, layout.Edge);
         if (openingFrame is null)
         {
             // 開いている途中なら、動きの方で置く
@@ -388,7 +416,7 @@ internal sealed partial class ShelfController : IDisposable
     {
         settings.HandlePosition = position;
         var monitor = MonitorInfo.Find(settings.Monitor);
-        layout = ShelfLayout.Compute(settings.Edge, monitor.WorkArea, monitor.Scale, position);
+        layout = ShelfLayout.Compute(settings.Edge, monitor.WorkArea, monitor.Scale, position, settings.LayoutOptions());
         WindowHelper.Place(handle, layout.Handle);
         RaiseSettingsChanged();
     }
@@ -559,7 +587,7 @@ internal sealed partial class ShelfController : IDisposable
             return;
         }
 
-        var width = (int)Math.Ceiling(item.ImageDisplayWidth * (layout?.Scale ?? 1));
+        var width = (int)Math.Ceiling(item.ImageDisplayWidth * (layout?.Scale ?? 1) * (layout?.ContentScale ?? 1));
         _ = Task.Run<BitmapImage?>(() =>
         {
             try
@@ -623,7 +651,7 @@ internal sealed partial class ShelfController : IDisposable
         var mode = alternate ? (item.IsImage ? PasteMode.AsFile : PasteMode.PlainText) : PasteMode.Normal;
         if (settings.CloseAfterPaste && !keepOpen)
         {
-            Close();
+            Close(sound: false);
         }
 
         try
@@ -697,6 +725,11 @@ internal sealed partial class ShelfController : IDisposable
 
     private void ShowResult(PasteResult result)
     {
+        if (result.Outcome == PasteOutcome.Pasted)
+        {
+            Play(SoundCue.Paste);
+        }
+
         var (kind, seconds) = result.Outcome switch
         {
             PasteOutcome.Pasted => (ToastKind.Success, 2.2),
@@ -800,8 +833,74 @@ internal sealed partial class ShelfController : IDisposable
         RaiseSettingsChanged();
         if (release is not null && announce && announcedUpdate != release.Tag && !disposed)
         {
-            announcedUpdate = release.Tag;
-            ShowToast($"新しい版 {release.DisplayVersion} があります。", ToastKind.Info, TimeSpan.FromSeconds(20), "入れ替える", InstallUpdate);
+            AnnounceUpdate(release);
+        }
+    }
+
+    /// <summary>新しい版があると知らせる（全画面のアプリを使っている間は、終わるまで待つ）。</summary>
+    private void AnnounceUpdate(Hikidana.Core.Updates.ReleaseInfo release)
+    {
+        if (fullscreenHidden)
+        {
+            updateWaiting = true;
+            return;
+        }
+
+        updateWaiting = false;
+        announcedUpdate = release.Tag;
+        ShowToast($"新しい版 {release.DisplayVersion} があります。", ToastKind.Info, TimeSpan.FromSeconds(20), "入れ替える", InstallUpdate);
+    }
+
+    /// <summary>
+    /// 全画面のアプリ（ゲームや全画面の動画）が、棚を出している画面の前にあるかを見て、取っ手を隠す・出す。
+    /// 隠している間は、マウスを乗せても開かない（ショートカットとタスクトレイのアイコンからは開ける）。
+    /// </summary>
+    private void CheckFullscreen()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        var hide = settings.HideInFullscreen && Fullscreen.IsForegroundFullscreen(MonitorInfo.Find(settings.Monitor).Bounds);
+        if (hide == fullscreenHidden)
+        {
+            return;
+        }
+
+        fullscreenHidden = hide;
+        Log.Info(hide ? "全画面のアプリが前にあるので、取っ手を隠しました。" : "全画面が終わったので、取っ手を出しました。");
+        UpdateHandleVisibility();
+        if (!hide && updateWaiting && updates?.Available is { } release && announcedUpdate != release.Tag)
+        {
+            AnnounceUpdate(release);
+        }
+    }
+
+    /// <summary>取っ手を出すか隠すか（棚が開いている間と、全画面のアプリが前にある間は隠す）。</summary>
+    private void UpdateHandleVisibility()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        if (isOpen || fullscreenHidden)
+        {
+            handle.Hide();
+        }
+        else
+        {
+            handle.Show();
+        }
+    }
+
+    /// <summary>効果音を鳴らす（設定で鳴らすことにしているときだけ）。</summary>
+    private void Play(SoundCue cue)
+    {
+        if (settings.Sounds && !disposed)
+        {
+            SoundEffects.Play(cue);
         }
     }
 
@@ -869,15 +968,23 @@ internal sealed partial class ShelfController : IDisposable
         {
             if (!disposed && !isOpen && settings.SignalOnCapture)
             {
-                handle.Flash(ClipItem.GlyphFor(clip.Kind));
+                handle.Flash(SignalGlyph(clip.Kind));
             }
         });
     }
 
+    /// <summary>取っ手で知らせるときの印（設定の「知らせの印」に合わせる。印なしなら空）。</summary>
+    private string SignalGlyph(ClipKind kind) => settings.SignalStyle switch
+    {
+        "check" => "\uE73E",
+        "plain" => string.Empty,
+        _ => ClipItem.GlyphFor(kind),
+    };
+
     /// <summary>自動で片付ける設定なら、期間を過ぎたものを消す（ときどき呼ぶ。画面のスレッドの外で消す）。</summary>
     private void PruneOld()
     {
-        if (settings.AutoDeleteDays <= 0)
+        if (settings.AutoDeleteHours <= 0)
         {
             return;
         }
@@ -907,7 +1014,7 @@ internal sealed partial class ShelfController : IDisposable
         shelf.ClearPicks();
         if (settings.CloseAfterPaste && !keepOpen)
         {
-            Close();
+            Close(sound: false);
         }
 
         if (clips.Count > 1)
@@ -940,6 +1047,7 @@ internal sealed partial class ShelfController : IDisposable
             }
 
             Log.Info($"まとめて貼り付け: {pasted} 件、先 {target?.ToString() ?? "なし"}");
+            Play(SoundCue.Paste);
             ShowToast($"{pasted} 件を続けて貼り付けました。", ToastKind.Success, TimeSpan.FromSeconds(2.5));
         }
         catch (Exception ex)
@@ -994,6 +1102,11 @@ internal sealed partial class ShelfController : IDisposable
 
     private void OnForegroundChanged(nint window)
     {
+        if (settings.HideInFullscreen)
+        {
+            CheckFullscreen();
+        }
+
         // 貼り付け先の候補として覚えておく（検索で棚が前に出たあとも、ここへ貼る）
         if (TargetWindow.From(window) is { } target && target.ProcessId != (uint)Environment.ProcessId && !NoTargetClasses.Contains(target.ClassName))
         {

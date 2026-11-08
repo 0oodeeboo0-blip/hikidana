@@ -134,6 +134,20 @@ public partial class App : Application
             DemoData.Fill(store, clock);
         }
 
+        // 起動したら消す設定（新しい版に入れ替えて起動し直したときは消さない。中身はそのままと約束しているので）
+        if (settings.ClearOnStartScope() is { } clearScope && !options.Updated)
+        {
+            try
+            {
+                var removed = store.DeleteMany(clearScope).Count;
+                Log.Info($"起動したので、ピン留め以外の{(clearScope == ClearScope.All ? "もの" : "スクリーンショット")}を {removed} 件消しました。");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn("起動したときに消すものを、消しきれませんでした。", ex);
+            }
+        }
+
         watcher = new ClipboardWatcher { ExcludedApps = settings.ExcludedApps, Paused = settings.Paused };
         watcher.Start();
         recorder = new ClipboardRecorder(store, watcher);
@@ -166,7 +180,7 @@ public partial class App : Application
         controller.Start(open: options.Open, updated: options.Updated);
         if (options.Settings)
         {
-            controller.OpenSettings();
+            controller.OpenSettings(options.SettingsPage);
         }
 
         openSignal = new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\{(options.Demo ? "Hikidana.Demo" : "Hikidana")}.Open");

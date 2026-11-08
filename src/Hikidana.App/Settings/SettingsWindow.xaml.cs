@@ -23,6 +23,19 @@ internal partial class SettingsWindow : Window
     /// <summary>ショートカットの選び方（設定の書き方。空は「使わない」）。</summary>
     private static readonly string[] HotkeyChoices = ["win+alt+v", "ctrl+alt+v", "alt+shift+v", "ctrl+alt+h", ""];
 
+    /// <summary>自動で消すまでの時間の選び方（時間。0 は「消さない」）。</summary>
+    private static readonly int[] AutoDeleteChoices = [0, 1, 6, 24, 72, 168, 336, 720];
+
+    /// <summary>ページの名前（--settings のあとに書くもの）と、その題名。</summary>
+    private static readonly Dictionary<string, string> PageTitles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["position"] = "位置と大きさ",
+        ["behavior"] = "動作",
+        ["appearance"] = "見た目",
+        ["records"] = "記録と片付け",
+        ["about"] = "このアプリについて",
+    };
+
     /// <summary>画面の図のいちばん大きな幅と高さ（DIP）。</summary>
     private const double DiagramMaxWidth = 240;
     private const double DiagramMaxHeight = 150;
@@ -33,10 +46,15 @@ internal partial class SettingsWindow : Window
     private ShelfEdge? hoverEdge;
     private int shownMaxItems;
 
-    public SettingsWindow(ISettingsHost host)
+    /// <param name="page">はじめに見せるページ（position・behavior・appearance・records・about。null なら位置と大きさ）。</param>
+    public SettingsWindow(ISettingsHost host, string? page = null)
     {
         this.host = host;
         InitializeComponent();
+        foreach (var choice in AutoDeleteChoices)
+        {
+            AutoDeleteBox.Items.Add(new ComboBoxItem { Content = AutoDeleteLabel(choice), Tag = choice });
+        }
 
         // 小さな画面では、作業領域に収まる高さにする（中身はスクロールできる）
         Height = Math.Max(MinHeight, Math.Min(Height, SystemParameters.WorkArea.Height - 32));
@@ -52,6 +70,39 @@ internal partial class SettingsWindow : Window
         };
         Activated += (_, _) => host.SettingsActivated();
         Load();
+        if (page is not null)
+        {
+            ShowPage(page);
+        }
+    }
+
+    /// <summary>そのページを見せる（左の項目も選んだ状態にする）。</summary>
+    public void ShowPage(string page)
+    {
+        var item = NavItems().FirstOrDefault(r => string.Equals(r.Tag as string, page, StringComparison.OrdinalIgnoreCase));
+        if (item is not null)
+        {
+            item.IsChecked = true;
+        }
+    }
+
+    private IEnumerable<RadioButton> NavItems() => [NavPosition, NavBehavior, NavAppearance, NavRecords, NavAbout];
+
+    private void Nav_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton { Tag: string page } || PositionPage is null)
+        {
+            // 作っている途中（はじめの IsChecked）
+            return;
+        }
+
+        PositionPage.Visibility = page == "position" ? Visibility.Visible : Visibility.Collapsed;
+        BehaviorPage.Visibility = page == "behavior" ? Visibility.Visible : Visibility.Collapsed;
+        AppearancePage.Visibility = page == "appearance" ? Visibility.Visible : Visibility.Collapsed;
+        RecordsPage.Visibility = page == "records" ? Visibility.Visible : Visibility.Collapsed;
+        AboutPage.Visibility = page == "about" ? Visibility.Visible : Visibility.Collapsed;
+        PageTitle.Text = PageTitles.TryGetValue(page, out var title) ? title : page;
+        Scroller.ScrollToTop();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -120,6 +171,15 @@ internal partial class SettingsWindow : Window
             }
 
             SelectMaxItems(settings.MaxItems);
+            SelectChip([HandleSmall, HandleMedium, HandleLarge], settings.HandleSize);
+            SelectChip([PanelSmall, PanelMedium, PanelLarge], settings.PanelSize);
+            SelectChip([TextSmall, TextMedium, TextLarge], settings.TextSize);
+            FullscreenSwitch.IsChecked = settings.HideInFullscreen;
+            SelectByTag(SignalStyleBox, settings.SignalStyle);
+            SignalStyleBox.IsEnabled = settings.SignalOnCapture;
+            PreviewSignalButton.IsEnabled = settings.SignalOnCapture;
+            SoundsSwitch.IsChecked = settings.Sounds;
+            SelectByTag(ClearOnStartBox, settings.ClearOnStart);
             MoveToTopSwitch.IsChecked = settings.MoveToTopOnPaste;
             PausedSwitch.IsChecked = settings.Paused;
             StartupSwitch.IsChecked = host.StartWithWindows;
@@ -145,7 +205,8 @@ internal partial class SettingsWindow : Window
             {
                 InstallUpdateButton.Content = $"新しい版 {release.DisplayVersion} に入れ替える";
             }
-            SelectAutoDelete(settings.AutoDeleteDays, settings.AutoDeleteScope);
+
+            SelectAutoDelete(settings.AutoDeleteHours, settings.AutoDeleteScope);
         }
         finally
         {
@@ -155,33 +216,43 @@ internal partial class SettingsWindow : Window
         DrawDiagram();
     }
 
-    /// <summary>自動で消す設定を、一覧で選んだ状態にする（一覧に無い日数なら足す）。</summary>
-    private void SelectAutoDelete(int days, string scope)
+    /// <summary>自動で消す設定を、一覧で選んだ状態にする（一覧に無い時間なら足す）。</summary>
+    private void SelectAutoDelete(int hours, string scope)
     {
-        var found = false;
-        foreach (ComboBoxItem item in AutoDeleteDaysBox.Items)
+        var item = AutoDeleteBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => i.Tag is int value && value == hours);
+        if (item is null)
         {
-            if (item.Tag is string tag && int.TryParse(tag, out var value) && value == days)
-            {
-                AutoDeleteDaysBox.SelectedItem = item;
-                found = true;
-            }
+            item = new ComboBoxItem { Content = AutoDeleteLabel(hours), Tag = hours };
+            AutoDeleteBox.Items.Add(item);
         }
 
-        if (!found)
-        {
-            var item = new ComboBoxItem { Content = $"{days} 日たったら", Tag = days.ToString(System.Globalization.CultureInfo.InvariantCulture) };
-            AutoDeleteDaysBox.Items.Add(item);
-            AutoDeleteDaysBox.SelectedItem = item;
-        }
-
+        AutoDeleteBox.SelectedItem = item;
         AutoDeleteScopeBox.SelectedIndex = scope == "all" ? 1 : 0;
-        AutoDeleteScopeBox.IsEnabled = days > 0;
+        AutoDeleteScopeBox.IsEnabled = hours > 0;
     }
 
-    private (int Days, string Scope) ChosenAutoDelete() => (
-        AutoDeleteDaysBox.SelectedItem is ComboBoxItem { Tag: string tag } && int.TryParse(tag, out var days) ? days : 0,
+    /// <summary>「6 時間たったら」「3 日たったら」のような名前。</summary>
+    private static string AutoDeleteLabel(int hours) => hours <= 0 ? "消さない" : $"{AgeLabel(hours)}たったら";
+
+    /// <summary>期間の言い方（「6 時間」「3 日」）。</summary>
+    private static string AgeLabel(int hours) => hours < 24 || hours % 24 != 0 ? $"{hours} 時間" : $"{hours / 24} 日";
+
+    private (int Hours, string Scope) ChosenAutoDelete() => (
+        AutoDeleteBox.SelectedItem is ComboBoxItem { Tag: int hours } ? hours : 0,
         AutoDeleteScopeBox.SelectedItem is ComboBoxItem { Tag: string scope } ? scope : "screenshots");
+
+    /// <summary>小・中・大のボタンのうち、設定の値（Tag）のものを選んだ状態にする。</summary>
+    private static void SelectChip(RadioButton[] chips, string value)
+    {
+        foreach (var chip in chips)
+        {
+            chip.IsChecked = string.Equals(chip.Tag as string, value, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>一覧のうち、設定の値（Tag）のものを選ぶ。</summary>
+    private static void SelectByTag(ComboBox box, string value) =>
+        box.SelectedItem = box.Items.OfType<ComboBoxItem>().FirstOrDefault(i => string.Equals(i.Tag as string, value, StringComparison.OrdinalIgnoreCase));
 
     private void SelectMaxItems(int count)
     {
@@ -325,7 +396,7 @@ internal partial class SettingsWindow : Window
 
         if (hoverEdge is { } edge && edge != layout.Edge)
         {
-            var ghost = ShelfLayout.Compute(edge, work, monitor.Scale, host.Settings.HandlePosition);
+            var ghost = ShelfLayout.Compute(edge, work, monitor.Scale, host.Settings.HandlePosition, host.Settings.LayoutOptions());
             Place(GhostPanel, Map(ghost.Panel));
             GhostPanel.Visibility = Visibility.Visible;
         }
@@ -498,7 +569,13 @@ internal partial class SettingsWindow : Window
 
     private void MoveToTop_Click(object sender, RoutedEventArgs e) => host.SetMoveToTop(MoveToTopSwitch.IsChecked == true);
 
-    private void Signal_Click(object sender, RoutedEventArgs e) => host.SetSignalOnCapture(SignalSwitch.IsChecked == true);
+    private void Signal_Click(object sender, RoutedEventArgs e)
+    {
+        var on = SignalSwitch.IsChecked == true;
+        SignalStyleBox.IsEnabled = on;
+        PreviewSignalButton.IsEnabled = on;
+        host.SetSignalOnCapture(on);
+    }
 
     private void Hotkey_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -518,22 +595,22 @@ internal partial class SettingsWindow : Window
             return;
         }
 
-        var (days, scope) = ChosenAutoDelete();
+        var (hours, scope) = ChosenAutoDelete();
         var settings = host.Settings;
-        AutoDeleteScopeBox.IsEnabled = days > 0;
-        if (days == settings.AutoDeleteDays && (days == 0 || scope == settings.AutoDeleteScope))
+        AutoDeleteScopeBox.IsEnabled = hours > 0;
+        if (hours == settings.AutoDeleteHours && (hours == 0 || scope == settings.AutoDeleteScope))
         {
             return;
         }
 
-        // もう日数を過ぎたものが、すぐ消えるときは確かめる
-        var lost = host.CountAutoDelete(days, scope);
+        // もう期間を過ぎたものが、すぐ消えるときは確かめる
+        var lost = host.CountAutoDelete(hours, scope);
         if (lost > 0)
         {
             var what = scope == "all" ? "もの（ピン留め以外）" : "スクリーンショット";
             var answer = MessageBox.Show(
                 this,
-                $"最後に使ってから {days} 日より前の{what} {lost:#,0} 件が、いますぐ棚から消えます。\n\nよろしいですか？",
+                $"最後に使ってから {AgeLabel(hours)}より前の{what} {lost:#,0} 件が、いますぐ棚から消えます。\n\nよろしいですか？",
                 "Hikidana の設定",
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Warning,
@@ -543,7 +620,7 @@ internal partial class SettingsWindow : Window
                 loading = true;
                 try
                 {
-                    SelectAutoDelete(settings.AutoDeleteDays, settings.AutoDeleteScope);
+                    SelectAutoDelete(settings.AutoDeleteHours, settings.AutoDeleteScope);
                 }
                 finally
                 {
@@ -554,8 +631,56 @@ internal partial class SettingsWindow : Window
             }
         }
 
-        host.SetAutoDelete(days, scope);
+        host.SetAutoDelete(hours, scope);
     }
+
+    private void ClearOnStart_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!loading && ClearOnStartBox.SelectedItem is ComboBoxItem { Tag: string what } && what != host.Settings.ClearOnStart)
+        {
+            host.SetClearOnStart(what);
+        }
+    }
+
+    private void HandleSize_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!loading && sender is RadioButton { Tag: string size } && size != host.Settings.HandleSize)
+        {
+            host.SetHandleSize(size);
+        }
+    }
+
+    private void PanelSize_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!loading && sender is RadioButton { Tag: string size } && size != host.Settings.PanelSize)
+        {
+            host.SetPanelSize(size);
+        }
+    }
+
+    private void TextSize_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!loading && sender is RadioButton { Tag: string size } && size != host.Settings.TextSize)
+        {
+            host.SetTextSize(size);
+        }
+    }
+
+    private void Fullscreen_Click(object sender, RoutedEventArgs e) => host.SetHideInFullscreen(FullscreenSwitch.IsChecked == true);
+
+    private void SignalStyle_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!loading && SignalStyleBox.SelectedItem is ComboBoxItem { Tag: string style } && style != host.Settings.SignalStyle)
+        {
+            host.SetSignalStyle(style);
+        }
+    }
+
+    private void PreviewSignal_Click(object sender, RoutedEventArgs e) => host.PreviewSignal();
+
+    private void Sounds_Click(object sender, RoutedEventArgs e) => host.SetSounds(SoundsSwitch.IsChecked == true);
+
+    private void Project_Click(object sender, RoutedEventArgs e) => host.OpenProjectPage();
 
     private void Paused_Click(object sender, RoutedEventArgs e) => host.SetPaused(PausedSwitch.IsChecked == true);
 

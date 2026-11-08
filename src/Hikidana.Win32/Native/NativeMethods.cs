@@ -182,6 +182,31 @@ internal static unsafe partial class NativeMethods
     [LibraryImport("user32.dll")]
     public static partial nint GetAncestor(nint hwnd, uint gaFlags);
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetWindowRect(nint hWnd, out RECT rect);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsZoomed(nint hWnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsIconic(nint hWnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsWindowVisible(nint hWnd);
+
     [LibraryImport("user32.dll", EntryPoint = "GetClassNameW", SetLastError = true)]
     public static partial int GetClassName(nint hWnd, char* lpClassName, int nMaxCount);
 

@@ -53,7 +53,7 @@ public sealed record TargetWindow(nint Handle, uint ProcessId, string? ProcessNa
 
     public override string ToString() => $"{DisplayName ?? ProcessName ?? "?"}（{ClassName}、{Kind}）";
 
-    private static unsafe string ClassNameOf(nint hwnd)
+    internal static unsafe string ClassNameOf(nint hwnd)
     {
         var buffer = stackalloc char[256];
         var length = NativeMethods.GetClassName(hwnd, buffer, 256);

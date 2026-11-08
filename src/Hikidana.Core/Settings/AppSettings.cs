@@ -42,14 +42,39 @@ public sealed class AppSettings
     /// <summary>棚を開くショートカット（例: win+alt+v）。空なら使わない。</summary>
     public string OpenHotkey { get; set; } = Hotkey.Default;
 
-    /// <summary>最後に使ってから、この日数がたったものを自動で消す。0 なら消さない。</summary>
+    /// <summary>最後に使ってから、この時間がたったものを自動で消す。0 なら消さない。</summary>
+    public int AutoDeleteHours { get; set; }
+
+    /// <summary>前の版の書き方（日数）。読んだら <see cref="AutoDeleteHours"/> に移す（書くときは書かない）。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public int AutoDeleteDays { get; set; }
 
     /// <summary>自動で消すもの: screenshots（スクリーンショットだけ）・all（ピン留め以外すべて）。</summary>
     public string AutoDeleteScope { get; set; } = "screenshots";
 
+    /// <summary>起動したときに消すもの: off（消さない）・screenshots（ピン留め以外のスクリーンショット）・all（ピン留め以外すべて）。</summary>
+    public string ClearOnStart { get; set; } = "off";
+
     /// <summary>棚に何か入ったら、取っ手から印を少し出して知らせる。</summary>
     public bool SignalOnCapture { get; set; } = true;
+
+    /// <summary>知らせの印: kind（しまったものの種類）・check（チェック）・plain（印なし。色が光るだけ）。</summary>
+    public string SignalStyle { get; set; } = "kind";
+
+    /// <summary>取っ手の大きさ: small・medium・large（大きいほど、マウスで当てやすい）。</summary>
+    public string HandleSize { get; set; } = "medium";
+
+    /// <summary>棚の長さ（端に沿って）: small（半分）・medium（4 分の 3）・large（いっぱい）。</summary>
+    public string PanelSize { get; set; } = "large";
+
+    /// <summary>棚の文字の大きさ: small・medium・large（棚の中身をまとめて縮める・広げる）。</summary>
+    public string TextSize { get; set; } = "medium";
+
+    /// <summary>全画面のアプリ（ゲームや全画面の動画）が前にあるあいだは、取っ手を隠す（ショートカットでは開ける）。</summary>
+    public bool HideInFullscreen { get; set; } = true;
+
+    /// <summary>棚を開け閉めしたときと、貼り付けたときに、小さな音を鳴らす。</summary>
+    public bool Sounds { get; set; }
 
     /// <summary>新しい版が出ていないか、ときどき確かめる（GitHub の Releases）。</summary>
     public bool CheckForUpdates { get; set; } = true;
@@ -61,10 +86,26 @@ public sealed class AppSettings
     public bool WelcomeShown { get; set; }
 
     /// <summary>自動で消すまでの期間（消さないなら null）。</summary>
-    public TimeSpan? AutoDeleteAge() => AutoDeleteDays > 0 ? TimeSpan.FromDays(AutoDeleteDays) : null;
+    public TimeSpan? AutoDeleteAge() => AutoDeleteHours > 0 ? TimeSpan.FromHours(AutoDeleteHours) : null;
 
     /// <summary>自動で消すものの範囲。</summary>
     public Storage.ClearScope AutoDeleteClearScope() => AutoDeleteScope == "all" ? Storage.ClearScope.All : Storage.ClearScope.Screenshots;
+
+    /// <summary>起動したときに消すものの範囲（消さないなら null）。</summary>
+    public Storage.ClearScope? ClearOnStartScope() => ClearOnStart switch
+    {
+        "screenshots" => Storage.ClearScope.Screenshots,
+        "all" => Storage.ClearScope.All,
+        _ => null,
+    };
+
+    /// <summary>取っ手と棚の大きさと、文字の大きさ。</summary>
+    public ShelfLayoutOptions LayoutOptions() => new()
+    {
+        HandleSize = SizeChoices.Parse(HandleSize, SizeChoice.Medium),
+        PanelSize = SizeChoices.Parse(PanelSize, SizeChoice.Large),
+        ContentScale = ShelfLayoutOptions.ScaleFor(SizeChoices.Parse(TextSize, SizeChoice.Medium)),
+    };
 
     /// <summary>おかしな値を直す。</summary>
     public AppSettings Normalize()
@@ -85,8 +126,30 @@ public sealed class AppSettings
         OpenHotkey = string.IsNullOrWhiteSpace(OpenHotkey) || OpenHotkey.Trim().Equals("none", StringComparison.OrdinalIgnoreCase)
             ? string.Empty
             : Hotkey.Parse(OpenHotkey)?.ToSetting() ?? Hotkey.Default;
-        AutoDeleteDays = Math.Clamp(AutoDeleteDays, 0, 365);
+        if (AutoDeleteHours <= 0 && AutoDeleteDays > 0)
+        {
+            // 前の版は日数で覚えていた
+            AutoDeleteHours = Math.Min(AutoDeleteDays, 365) * 24;
+        }
+
+        AutoDeleteDays = 0;
+        AutoDeleteHours = Math.Clamp(AutoDeleteHours, 0, 365 * 24);
         AutoDeleteScope = AutoDeleteScope?.ToLowerInvariant() == "all" ? "all" : "screenshots";
+        ClearOnStart = ClearOnStart?.ToLowerInvariant() switch
+        {
+            "screenshots" => "screenshots",
+            "all" => "all",
+            _ => "off",
+        };
+        SignalStyle = SignalStyle?.ToLowerInvariant() switch
+        {
+            "check" => "check",
+            "plain" => "plain",
+            _ => "kind",
+        };
+        HandleSize = SizeChoices.Parse(HandleSize, SizeChoice.Medium).ToSetting();
+        PanelSize = SizeChoices.Parse(PanelSize, SizeChoice.Large).ToSetting();
+        TextSize = SizeChoices.Parse(TextSize, SizeChoice.Medium).ToSetting();
         ExcludedApps = (ExcludedApps ?? [])
             .Where(a => !string.IsNullOrWhiteSpace(a))
             .Select(a => a.Trim())

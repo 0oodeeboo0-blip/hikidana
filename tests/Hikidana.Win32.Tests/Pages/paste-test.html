@@ -21,6 +21,8 @@
   figcaption { font-size: 11px; padding: 5px 9px; color: #52525b; }
   #editor { min-height: 52px; max-height: 220px; overflow: auto; outline: none; font-size: 15px; line-height: 1.6; }
   #editor:empty::before { content: "メッセージを入力（ここに貼り付けます）"; color: #a1a1aa; }
+  #fullscreen { position: fixed; left: 24px; top: 84px; width: 140px; height: 44px; border: 1px solid #d4d4d8; border-radius: 10px;
+                background: #fff; font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; color: #18181b; cursor: pointer; }
   #source { position: fixed; right: 24px; top: 84px; width: 300px; height: 56px; display: flex; align-items: center; justify-content: center;
             background: #eef2ff; border: 1px dashed #6366f1; border-radius: 10px; font-size: 13px; color: #3730a3; cursor: grab; user-select: none; }
 </style>
@@ -30,6 +32,7 @@
   <h1>Hikidana の貼り付けテスト</h1>
   <p>チャットのアプリの入力欄と同じように、貼り付けの中身（paste イベント）を受け取って、下に書き出します。</p>
 </header>
+<button id="fullscreen" type="button">全画面</button>
 <div id="source" draggable="true" data-text="Edge からドラッグしたテキスト">ドラッグできる文字: Edge からドラッグしたテキスト</div>
 <main id="events"></main>
 <div class="composer">
@@ -62,6 +65,20 @@
     receive(e, e.dataTransfer, 'drop');
   });
   document.addEventListener('paste', (e) => receive(e, e.clipboardData, 'paste'));
+
+  // 全画面のテスト用（動画を全画面で見るのと同じ、ページの全画面）。もう一度押すと戻る
+  document.getElementById('fullscreen').addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (err) {
+      document.title = 'HKD[' + JSON.stringify({ fullscreenError: String(err) }) + ']HKD';
+    }
+    editor.focus();
+  });
 
   // 棚へドラッグして渡すテスト用の、ドラッグできる文字
   const source = document.getElementById('source');

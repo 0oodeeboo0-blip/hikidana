@@ -50,8 +50,8 @@ internal sealed partial class ShelfController : ISettingsHost
         }
     }
 
-    /// <summary>設定の画面を開く（開いていれば前に出す）。開いている棚は閉じる。</summary>
-    public void OpenSettings()
+    /// <summary>設定の画面を開く（開いていれば前に出す）。開いている棚は閉じる。<paramref name="page"/> は、はじめに見せるページ。</summary>
+    public void OpenSettings(string? page = null)
     {
         if (disposed)
         {
@@ -70,11 +70,16 @@ internal sealed partial class ShelfController : ISettingsHost
                 existing.WindowState = WindowState.Normal;
             }
 
+            if (page is not null)
+            {
+                existing.ShowPage(page);
+            }
+
             existing.Activate();
             return;
         }
 
-        var window = new SettingsWindow(this);
+        var window = new SettingsWindow(this, page);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(settingsWindow, window))
@@ -201,12 +206,12 @@ internal sealed partial class ShelfController : ISettingsHost
         return works;
     }
 
-    int ISettingsHost.CountAutoDelete(int days, string scope) =>
-        days <= 0 ? 0 : store.CountOlderThan(TimeSpan.FromDays(days), scope == "all" ? ClearScope.All : ClearScope.Screenshots);
+    int ISettingsHost.CountAutoDelete(int hours, string scope) =>
+        hours <= 0 ? 0 : store.CountOlderThan(TimeSpan.FromHours(hours), scope == "all" ? ClearScope.All : ClearScope.Screenshots);
 
-    void ISettingsHost.SetAutoDelete(int days, string scope)
+    void ISettingsHost.SetAutoDelete(int hours, string scope)
     {
-        settings.AutoDeleteDays = days;
+        settings.AutoDeleteHours = hours;
         settings.AutoDeleteScope = scope;
         settings.Normalize();
         int removed;
@@ -221,9 +226,18 @@ internal sealed partial class ShelfController : ISettingsHost
         }
 
         SaveSettings();
-        Log.Info(settings.AutoDeleteDays > 0
-            ? $"{settings.AutoDeleteDays} 日たった {settings.AutoDeleteScope} を自動で消すようにしました（いま消したもの {removed} 件）。"
+        Log.Info(settings.AutoDeleteHours > 0
+            ? $"{settings.AutoDeleteHours} 時間たった {settings.AutoDeleteScope} を自動で消すようにしました（いま消したもの {removed} 件）。"
             : "古いものを自動で消さないようにしました。");
+        RaiseSettingsChanged();
+    }
+
+    void ISettingsHost.SetClearOnStart(string what)
+    {
+        settings.ClearOnStart = what;
+        settings.Normalize();
+        SaveSettings();
+        Log.Info($"起動したときに消すもの: {settings.ClearOnStart}");
         RaiseSettingsChanged();
     }
 
@@ -233,6 +247,84 @@ internal sealed partial class ShelfController : ISettingsHost
         SaveSettings();
         RaiseSettingsChanged();
     }
+
+    void ISettingsHost.SetSignalStyle(string style)
+    {
+        settings.SignalStyle = style;
+        settings.Normalize();
+        SaveSettings();
+        RaiseSettingsChanged();
+        ((ISettingsHost)this).PreviewSignal();
+    }
+
+    void ISettingsHost.PreviewSignal()
+    {
+        if (!isOpen && !disposed)
+        {
+            handle.Flash(SignalGlyph(Hikidana.Core.Clips.ClipKind.Screenshot));
+        }
+    }
+
+    void ISettingsHost.SetHandleSize(string size)
+    {
+        settings.HandleSize = size;
+        settings.Normalize();
+        Relayout();
+        SaveSettings();
+        Log.Info($"取っ手の大きさを変えました: {settings.HandleSize}（{layout.Handle}）");
+        RaiseSettingsChanged();
+    }
+
+    void ISettingsHost.SetPanelSize(string size)
+    {
+        settings.PanelSize = size;
+        settings.Normalize();
+        Relayout();
+        SaveSettings();
+        Log.Info($"棚の長さを変えました: {settings.PanelSize}（{layout.Panel}）");
+        RaiseSettingsChanged();
+    }
+
+    void ISettingsHost.SetTextSize(string size)
+    {
+        settings.TextSize = size;
+        settings.Normalize();
+        Relayout();
+
+        // 縮小画像を、新しい大きさに合わせて読み直す
+        shelf.Items.Clear();
+        Refresh();
+        SaveSettings();
+        Log.Info($"棚の文字の大きさを変えました: {settings.TextSize}（{layout.Panel}）");
+        RaiseSettingsChanged();
+    }
+
+    void ISettingsHost.SetHideInFullscreen(bool on)
+    {
+        settings.HideInFullscreen = on;
+        if (on)
+        {
+            fullscreenTimer.Start();
+        }
+        else
+        {
+            fullscreenTimer.Stop();
+        }
+
+        CheckFullscreen();
+        SaveSettings();
+        RaiseSettingsChanged();
+    }
+
+    void ISettingsHost.SetSounds(bool on)
+    {
+        settings.Sounds = on;
+        SaveSettings();
+        RaiseSettingsChanged();
+        Play(Hikidana.Core.Feedback.SoundCue.Open);
+    }
+
+    void ISettingsHost.OpenProjectPage() => OpenPage(Hikidana.Core.Updates.ReleaseInfo.ProjectUrl);
 
     Hikidana.Core.Updates.ReleaseInfo? ISettingsHost.AvailableUpdate => updates?.Available;
 

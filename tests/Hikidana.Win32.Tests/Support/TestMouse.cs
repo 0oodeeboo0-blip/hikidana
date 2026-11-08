@@ -23,6 +23,15 @@ internal static class TestMouse
         mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
     }
 
+    public static async Task RightClickAsync(int x, int y, int hoverMilliseconds = 300)
+    {
+        MoveTo(x, y);
+        await Task.Delay(hoverMilliseconds);
+        mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0);
+        await Task.Delay(60);
+        mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
+    }
+
     /// <summary>ホイールを回す（<paramref name="notches"/> が負なら下へ）。</summary>
     public static void Wheel(int x, int y, int notches)
     {

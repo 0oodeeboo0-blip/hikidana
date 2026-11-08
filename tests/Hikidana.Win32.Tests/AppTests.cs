@@ -141,6 +141,102 @@ public sealed class AppTests
     }
 
     [Fact(WindowsOnly = true)]
+    public async Task ClickingOutsideStillClosesAfterUsingTheMenus()
+    {
+        var page = await ChromiumPage.SharedAsync();
+        using var app = await RunningApp.StartAsync();
+        var shelf = await app.OpenShelfAsync(page);
+        var viewport = page.Viewport();
+        var outside = (X: viewport.Left + 60, Y: viewport.Bottom - 60);
+
+        // カードを右クリックして「コピーだけする」を押す（メニューは閉じて、棚は開いたまま）
+        var card = FirstCardPoint(shelf);
+        await TestMouse.RightClickAsync(card.X, card.Y);
+        var menu = await WaitForMenuAsync(app, shelf);
+        if (await Automation.WaitForNamedCenterAsync(menu, "コピーだけする", TimeSpan.FromSeconds(3)) is not { } copy)
+        {
+            ScreenCapture.Save("failed-app-menus");
+            throw new AssertionException("右クリックのメニューに「コピーだけする」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(copy.X, copy.Y, hoverMilliseconds: 300);
+        await Task.Delay(800);
+
+        // 「…」のメニューを開いたまま外をクリックすると、メニューだけが閉じる（棚は閉じない）
+        if (await Automation.WaitForCenterAsync(shelf, "MoreButton", TimeSpan.FromSeconds(3)) is not { } more)
+        {
+            throw new AssertionException("棚に「…」のボタンが見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(more.X, more.Y, hoverMilliseconds: 300);
+        var moreMenu = await WaitForMenuAsync(app, shelf);
+        await Task.Delay(400);
+        await TestMouse.ClickAsync(outside.X, outside.Y, hoverMilliseconds: 200);
+        Assert.True(await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(moreMenu), TimeSpan.FromSeconds(3)), "外をクリックしても、メニューが閉じませんでした。");
+        await Task.Delay(800);
+        Assert.True(TestNative.IsWindowVisible(shelf), "メニューを閉じるためのクリックで、棚まで閉じました。");
+
+        // もう一度外をクリックすると、棚が閉じる
+        await TestMouse.ClickAsync(outside.X, outside.Y, hoverMilliseconds: 200);
+        var closed = await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(shelf), TimeSpan.FromSeconds(3));
+        if (!closed)
+        {
+            ScreenCapture.Save("failed-app-menus");
+            PrintDemoLog();
+        }
+
+        Assert.True(closed, "メニューを使ったあと、棚の外をクリックしても閉じませんでした。");
+
+        // 「…」の「設定」で閉じたあとも、開き直した棚は外のクリックで閉じる
+        shelf = await app.OpenShelfAsync(page);
+        if (await Automation.WaitForCenterAsync(shelf, "MoreButton", TimeSpan.FromSeconds(3)) is not { } more2)
+        {
+            throw new AssertionException("棚に「…」のボタンが見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(more2.X, more2.Y, hoverMilliseconds: 300);
+        var menu2 = await WaitForMenuAsync(app, shelf);
+        if (await Automation.WaitForCenterAsync(menu2, "SettingsItem", TimeSpan.FromSeconds(3)) is not { } settingsItem)
+        {
+            throw new AssertionException("「…」のメニューに「設定」が見つかりません。");
+        }
+
+        await TestMouse.ClickAsync(settingsItem.X, settingsItem.Y, hoverMilliseconds: 300);
+        var settings = await app.WaitForWindowAsync("Hikidana の設定", TimeSpan.FromSeconds(5));
+        Assert.NotEqual((nint)0, settings, "「設定」を押しても、設定の画面が出ませんでした。");
+        await Task.Delay(500);
+        TestNative.SendMessage(settings, 0x0010, 0, 0);
+        await Task.Delay(500);
+
+        shelf = await app.OpenShelfAsync(page);
+        await TestMouse.ClickAsync(outside.X, outside.Y, hoverMilliseconds: 200);
+        var closedAgain = await Desktop.WaitUntilAsync(() => !TestNative.IsWindowVisible(shelf), TimeSpan.FromSeconds(3));
+        if (!closedAgain)
+        {
+            ScreenCapture.Save("failed-app-menus-settings");
+            PrintDemoLog();
+        }
+
+        Assert.True(closedAgain, "設定を開いたあと、開き直した棚が外のクリックで閉じませんでした。");
+    }
+
+    /// <summary>このアプリのメニュー（題名の無い WPF のポップアップ）が出るまで待つ。</summary>
+    private static async Task<nint> WaitForMenuAsync(RunningApp app, nint shelf)
+    {
+        var menu = await Desktop.WaitForWindowAsync(
+            w => Desktop.ProcessIdOf(w) == (uint)app.ProcessId && Desktop.ClassOf(w).StartsWith("HwndWrapper", StringComparison.Ordinal)
+                && w != shelf && Desktop.TitleOf(w).Length == 0 && TestNative.IsWindowVisible(w),
+            TimeSpan.FromSeconds(3));
+        if (menu == 0)
+        {
+            ScreenCapture.Save("failed-app-menus");
+            throw new AssertionException("メニューが出ませんでした。");
+        }
+
+        return menu;
+    }
+
+    [Fact(WindowsOnly = true)]
     public async Task HotkeyOpensTheShelfForTheKeyboardAndEnterPastes()
     {
         var page = await ChromiumPage.SharedAsync();

@@ -263,6 +263,7 @@ internal sealed partial class ShelfController : IDisposable
         dismiss.Stop();
         leaveTimer.Stop();
         StopOpening();
+        ShelfWindow.CloseMenus();
         shelf.Hide();
         shelf.ResetView();
         isOpen = false;

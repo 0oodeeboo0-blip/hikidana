@@ -25,7 +25,8 @@ public partial class ShelfWindow : Window
     private const double DragThreshold = 8;
 
     private static readonly CompareInfo Compare = CultureInfo.GetCultureInfo("ja-JP").CompareInfo;
-    private static int openMenus;
+    /// <summary>開いているメニュー（右クリック・「…」・検索の欄など）。画面のスレッドだけで使う。</summary>
+    private static readonly HashSet<ContextMenu> openMenus = [];
     private readonly ICollectionView view;
     private Point? pressedAt;
     private ClipItem? pressedItem;
@@ -43,8 +44,20 @@ public partial class ShelfWindow : Window
     static ShelfWindow()
     {
         // 棚のメニュー（右クリック・「…」）が開いている間は、マウスが棚の外（メニューの上）にあっても閉じないため
-        EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.OpenedEvent, new RoutedEventHandler((_, _) => openMenus++));
-        EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.ClosedEvent, new RoutedEventHandler((_, _) => openMenus = Math.Max(0, openMenus - 1)));
+        EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.OpenedEvent, new RoutedEventHandler((sender, _) =>
+        {
+            if (sender is ContextMenu menu)
+            {
+                openMenus.Add(menu);
+            }
+        }));
+        EventManager.RegisterClassHandler(typeof(ContextMenu), ContextMenu.ClosedEvent, new RoutedEventHandler((sender, _) =>
+        {
+            if (sender is ContextMenu menu)
+            {
+                openMenus.Remove(menu);
+            }
+        }));
     }
 
     public ShelfWindow()
@@ -114,7 +127,29 @@ public partial class ShelfWindow : Window
     public event Action<bool>? OpenOnHoverChanged;
 
     /// <summary>メニュー（右クリック・「…」）が開いている。</summary>
-    public static bool IsMenuOpen => openMenus > 0;
+    /// <summary>
+    /// メニューが開いている。閉じたという知らせが来なかったメニュー（開いたまま棚が隠れたなど）は、本当に開いているかを見て外す
+    /// （数えるだけだと、知らせが 1 つ抜けただけで「ずっと開いている」ことになり、棚の外をクリックしても閉じなくなる）。
+    /// </summary>
+    public static bool IsMenuOpen
+    {
+        get
+        {
+            openMenus.RemoveWhere(menu => !menu.IsOpen || !menu.IsVisible);
+            return openMenus.Count > 0;
+        }
+    }
+
+    /// <summary>開いているメニューを閉じる（棚を閉じるとき。メニューだけが残らないように）。</summary>
+    public static void CloseMenus()
+    {
+        foreach (var menu in openMenus.ToList())
+        {
+            menu.IsOpen = false;
+        }
+
+        openMenus.Clear();
+    }
 
     /// <summary>検索の欄をクリックした（キーボードで打てるよう、棚を前に出してほしい）。</summary>
     public event Action? TypingRequested;

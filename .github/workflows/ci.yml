@@ -177,6 +177,14 @@ jobs:
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             Write-Host "$tag は、もう Releases にあります"
+            # 説明のファイルを直したときは、Releases の説明もそろえる（そろえられなくても止めない）
+            $notes = "docs/releases/$version.md"
+            if (Test-Path $notes) {
+              gh release edit $tag --notes-file $notes
+              if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Releases の説明をそろえられませんでした（$tag）"
+              }
+            }
             exit 0
           }
           $stage = Join-Path $env:RUNNER_TEMP 'release'

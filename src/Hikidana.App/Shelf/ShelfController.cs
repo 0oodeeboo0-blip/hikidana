@@ -65,6 +65,12 @@ internal sealed partial class ShelfController : IDisposable
 
     /// <summary>新しい版の知らせを、全画面が終わるまで待たせている。</summary>
     private bool updateWaiting;
+
+    /// <summary>
+    /// 取っ手を隠している間に棚に入ったものの印と、その時刻。すぐ取っ手を出せたら、そこで知らせる
+    /// （スクリーンショットを撮る画面は全画面なので、撮り終わった直後は、まだ取っ手を隠していることがある）。
+    /// </summary>
+    private (string Glyph, long At)? pendingFlash;
     private bool disposed;
 
     /// <param name="startup">サインインしたら起動する設定。見本で動かすときは null（本物の設定を変えない）。</param>
@@ -888,10 +894,17 @@ internal sealed partial class ShelfController : IDisposable
         if (isOpen || fullscreenHidden)
         {
             handle.Hide();
+            return;
         }
-        else
+
+        handle.Show();
+        if (pendingFlash is { } flash)
         {
-            handle.Show();
+            pendingFlash = null;
+            if (Stopwatch.GetElapsedTime(flash.At) < TimeSpan.FromSeconds(4) && settings.SignalOnCapture)
+            {
+                handle.Flash(flash.Glyph);
+            }
         }
     }
 
@@ -968,7 +981,16 @@ internal sealed partial class ShelfController : IDisposable
         {
             if (!disposed && !isOpen && settings.SignalOnCapture)
             {
-                handle.Flash(SignalGlyph(clip.Kind));
+                // 全画面の様子を見直してから知らせる。まだ隠しているなら、出したときに知らせる
+                CheckFullscreen();
+                if (fullscreenHidden)
+                {
+                    pendingFlash = (SignalGlyph(clip.Kind), Stopwatch.GetTimestamp());
+                }
+                else
+                {
+                    handle.Flash(SignalGlyph(clip.Kind));
+                }
             }
         });
     }

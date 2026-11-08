@@ -92,7 +92,17 @@ internal sealed partial class ShelfController : IDisposable
         // 棚の外のクリックと Esc で閉じる（棚が開いている間だけ見張る）
         dismiss = new DismissWatcher
         {
-            IsBusy = () => dragging || dialogOpen || ShelfWindow.IsMenuOpen,
+            IsBusy = () => dragging || dialogOpen,
+            DismissMenus = () =>
+            {
+                if (!ShelfWindow.IsMenuOpen)
+                {
+                    return false;
+                }
+
+                ShelfWindow.CloseMenus();
+                return true;
+            },
             TakesEscape = () => isOpen && !keepOpen,
         };
         dismiss.ClickedOutside += OnClickedOutside;

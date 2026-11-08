@@ -287,11 +287,37 @@ public partial class ShelfWindow : Window
         WindowHelper.MakeToolWindow(this, noActivate: true);
         WindowHelper.RoundCorners(this);
         ApplyBackdrop();
+        if (PresentationSource.FromVisual(this) is System.Windows.Interop.HwndSource source)
+        {
+            source.AddHook(WndProc);
+        }
     }
 
-    private static bool ShiftHeld() => InputSender.HeldModifiers().Any(k => k is LeftShift or RightShift);
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_LBUTTONUP = 0x0202;
+    private const long MK_SHIFT = 0x0004;
+    private const long MK_CONTROL = 0x0008;
 
-    private static bool ControlHeld() => InputSender.HeldModifiers().Any(k => k is LeftControl or RightControl);
+    /// <summary>
+    /// いちばん最近のマウスの左ボタンの知らせに付いていた Shift と Ctrl（ボタンを押した・離したときのキーの様子）。
+    /// クリックを受け取るのは少しあとなので、その時点のキーの様子を見ると、もう離されていて「ただのクリック」になることがある。
+    /// </summary>
+    private (bool Shift, bool Control)? buttonKeys;
+
+    private nint WndProc(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
+    {
+        if (message is WM_LBUTTONDOWN or WM_LBUTTONUP)
+        {
+            var flags = (long)wParam;
+            buttonKeys = ((flags & MK_SHIFT) != 0, (flags & MK_CONTROL) != 0);
+        }
+
+        return 0;
+    }
+
+    private bool ShiftHeld() => buttonKeys?.Shift ?? InputSender.HeldModifiers().Any(k => k is LeftShift or RightShift);
+
+    private bool ControlHeld() => buttonKeys?.Control ?? InputSender.HeldModifiers().Any(k => k is LeftControl or RightControl);
 
     /// <summary>選ぶ・外す。外したら、あとの番号を詰める。</summary>
     private void TogglePick(ClipItem item)

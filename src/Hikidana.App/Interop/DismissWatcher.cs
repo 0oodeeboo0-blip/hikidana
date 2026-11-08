@@ -95,8 +95,14 @@ internal sealed unsafe partial class DismissWatcher : IDisposable
     /// <summary>ほかのアプリを使っている間に、Esc が押された（画面のスレッドで、少しあとに呼ばれる）。</summary>
     public event Action? EscapePressed;
 
-    /// <summary>いまのクリックを数えない（メニューやダイアログを開いている、ドラッグしているなど）なら true。画面のスレッドで呼ぶ。</summary>
+    /// <summary>いまのクリックを数えない（ダイアログを開いている、ドラッグしているなど）なら true。画面のスレッドで呼ぶ。</summary>
     public Func<bool> IsBusy { get; init; } = static () => false;
+
+    /// <summary>
+    /// 開いているメニューを閉じる。閉じたものがあれば true（そのクリックは、メニューを閉じるだけにする）。画面のスレッドで呼ぶ。
+    /// 棚は前面にならないので、ほかのアプリをクリックしても、Windows は棚のメニューに知らせない（メニューが開いたままになる）。
+    /// </summary>
+    public Func<bool> DismissMenus { get; init; } = static () => false;
 
     /// <summary>
     /// Esc を棚が受け取ってよいなら true（開いたままにしているときは false にして、Esc をアプリへ渡す）。
@@ -132,10 +138,12 @@ internal sealed unsafe partial class DismissWatcher : IDisposable
     /// <summary>押した（画面のスレッド）。このときメニューが開いていたら、そのクリックはメニューを閉じるだけにする。</summary>
     private void OnDown(HookThread from, bool outside)
     {
-        if (ReferenceEquals(from, running))
+        if (!ReferenceEquals(from, running))
         {
-            downCounts = outside && !IsBusy();
+            return;
         }
+
+        downCounts = outside && !DismissMenus() && !IsBusy();
     }
 
     /// <summary>離した（画面のスレッド）。押したときも離したときも外なら、外のクリック。</summary>

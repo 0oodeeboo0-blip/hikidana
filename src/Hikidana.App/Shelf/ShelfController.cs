@@ -31,9 +31,12 @@ internal sealed partial class ShelfController : IDisposable
     private readonly SettingsStore settingsStore;
     private readonly StartupRegistration? startup;
     private readonly Updates.UpdateService? updates;
-    private readonly DispatcherTimer updateTimer = new() { Interval = TimeSpan.FromHours(6) };
+    private readonly DispatcherTimer updateTimer = new() { Interval = Hikidana.Core.Updates.UpdateSchedule.Interval };
     private string? announcedUpdate;
     private bool installing;
+
+    /// <summary>新しい版を確かめている途中。</summary>
+    private bool checkingUpdate;
     private readonly HandleWindow handle = new();
     private readonly ShelfWindow shelf = new();
     private readonly ToastWindow toast = new();
@@ -170,17 +173,18 @@ internal sealed partial class ShelfController : IDisposable
         ApplyHotkey();
         if (updates is not null)
         {
-            // 起動してすぐは混み合うので、少し待ってから確かめる。そのあとは 6 時間ごと
+            // 起動してすぐは混み合うので、少し待ってから確かめる。そのあとは 1 時間ごと（スリープから戻ったときと、設定の画面を開いたときも）
             updateTimer.Tick += (_, _) =>
             {
-                updateTimer.Interval = TimeSpan.FromHours(6);
+                updateTimer.Interval = Hikidana.Core.Updates.UpdateSchedule.Interval;
                 if (settings.CheckForUpdates)
                 {
                     _ = CheckForUpdateAsync(announce: true);
                 }
             };
-            updateTimer.Interval = TimeSpan.FromSeconds(updated ? 5 : 30);
+            updateTimer.Interval = updated ? Hikidana.Core.Updates.UpdateSchedule.FirstCheckAfterUpdate : Hikidana.Core.Updates.UpdateSchedule.FirstCheck;
             updateTimer.Start();
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
             if (updated)
             {
                 updates.CleanDownloads();
@@ -322,6 +326,7 @@ internal sealed partial class ShelfController : IDisposable
         Theme.Palette.Changed -= OnPaletteChanged;
         StopOpening();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         clock.Stop();
         leaveTimer.Stop();
@@ -830,17 +835,58 @@ internal sealed partial class ShelfController : IDisposable
     /// <summary>新しい版を確かめる。<paramref name="announce"/> なら、見つかったとき知らせを出す（同じ版は 1 回だけ）。</summary>
     private async Task CheckForUpdateAsync(bool announce)
     {
-        if (updates is null || installing || disposed)
+        if (updates is null || installing || disposed || checkingUpdate)
         {
             return;
         }
 
-        var release = await updates.CheckAsync();
+        checkingUpdate = true;
+        RaiseSettingsChanged();
+        Hikidana.Core.Updates.ReleaseInfo? release;
+        try
+        {
+            release = await updates.CheckAsync();
+        }
+        finally
+        {
+            checkingUpdate = false;
+        }
+
         RaiseSettingsChanged();
         if (release is not null && announce && announcedUpdate != release.Tag && !disposed)
         {
             AnnounceUpdate(release);
         }
+    }
+
+    /// <summary>前に確かめてから時間がたっていれば、新しい版をいま確かめる（設定の画面を開いたとき）。</summary>
+    private void CheckForUpdateIfStale()
+    {
+        if (updates is { } service && settings.CheckForUpdates && Hikidana.Core.Updates.UpdateSchedule.IsStale(service.LastChecked, DateTimeOffset.Now))
+        {
+            _ = CheckForUpdateAsync(announce: true);
+        }
+    }
+
+    /// <summary>スリープから戻った: 少し待って（ネットにつながってから）新しい版を確かめる。</summary>
+    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != PowerModes.Resume)
+        {
+            return;
+        }
+
+        dispatcher.BeginInvoke(() =>
+        {
+            if (disposed || updates is null)
+            {
+                return;
+            }
+
+            updateTimer.Stop();
+            updateTimer.Interval = Hikidana.Core.Updates.UpdateSchedule.AfterResume;
+            updateTimer.Start();
+        });
     }
 
     /// <summary>新しい版があると知らせる（全画面のアプリを使っている間は、終わるまで待つ）。</summary>

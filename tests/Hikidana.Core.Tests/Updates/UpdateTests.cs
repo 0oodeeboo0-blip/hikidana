@@ -127,4 +127,16 @@ public sealed class UpdateTests : IDisposable
         Assert.Equal(hash, SelfUpdate.ParseChecksum(hash));
         Assert.Null(SelfUpdate.ParseChecksum("見つかりません"));
     }
+
+    [Fact]
+    public void OldChecksAreDoneAgain()
+    {
+        var now = new DateTimeOffset(2026, 11, 8, 11, 48, 0, TimeSpan.FromHours(9));
+        Assert.True(UpdateSchedule.IsStale(null, now), "まだ確かめていない");
+        Assert.False(UpdateSchedule.IsStale(now.AddMinutes(-3), now), "3 分前に確かめた");
+        Assert.True(UpdateSchedule.IsStale(now.AddMinutes(-10), now), "10 分前");
+        Assert.True(UpdateSchedule.IsStale(now.AddHours(-1.5), now), "10:15 に確かめて、いま 11:48");
+        Assert.True(UpdateSchedule.IsStale(now.AddMinutes(5), now), "時計が戻った");
+        Assert.True(UpdateSchedule.Interval <= TimeSpan.FromHours(1), "動いている間も、1 時間に 1 回は確かめる");
+    }
 }

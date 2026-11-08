@@ -47,7 +47,8 @@
 - アプリのビルド結果は、利用者が Actions の成果物 `Hikidana-win-x64` からダウンロードする（GitHub へのログインが要る）。
 - 新しい版を届ける: `Directory.Build.props` の `Version` を上げて main に push すると、CI（Windows のジョブの最後）が
   その版がまだ Releases に無ければ zip と SHA-256 を置く（説明は `docs/releases/<版>.md`）。アプリは Releases の latest を
-  6 時間ごとに確かめて知らせ、「入れ替える」で exe を入れ替えて起動し直す（`Core/Updates`、`App/Updates`。リポジトリは公開）。
+  起動して 30 秒後、そのあと 1 時間ごと、スリープから戻ったとき、設定の画面を開いたとき（前に確かめてから 10 分以上たっていれば）に確かめて知らせ、
+  「入れ替える」で exe を入れ替えて起動し直す（`Core/Updates`、`App/Updates`。リポジトリは公開）。
   版を上げない push は、利用者のアプリには届かない（Actions の成果物だけ）。
 - 配布: `v0.1.0` のようなタグを push するか、Actions の「Release」で「Run workflow」を押して版を入れると、
   `.github/workflows/release.yml` が zip を作って GitHub の Releases に置く

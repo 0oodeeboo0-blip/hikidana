@@ -76,6 +76,7 @@ internal sealed partial class ShelfController : ISettingsHost
             }
 
             existing.Activate();
+            CheckForUpdateIfStale();
             return;
         }
 
@@ -91,6 +92,7 @@ internal sealed partial class ShelfController : ISettingsHost
         window.Show();
         window.Activate();
         Log.Info("設定の画面を開きました。");
+        CheckForUpdateIfStale();
     }
 
     void ISettingsHost.SetEdge(ShelfEdge edge)
@@ -332,6 +334,7 @@ internal sealed partial class ShelfController : ISettingsHost
     {
         null => "見本で動かしているので、新しい版は確かめません。",
         _ when installing => "新しい版に入れ替えています…",
+        _ when checkingUpdate => "新しい版を確かめています…",
         { Available: { } release } => $"新しい版 {release.DisplayVersion} があります。",
         { LastChecked: null } => "新しい版は、まだ確かめていません。",
         { LastCheckFailed: true } => "新しい版を確かめられませんでした（インターネットにつながっているか確かめてください）。",

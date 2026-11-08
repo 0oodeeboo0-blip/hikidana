@@ -9,7 +9,7 @@
       版。ビルドしたコミットが「0.2.0+コミット」の形で付く。main に push して CI が通ると、この版がまだ Releases に無ければ置く
       （アプリが新しい版に気づいて、入れ替えられる）。利用者に届けたい変更を出すときは、ここを上げる。
     -->
-    <Version>0.3.0</Version>
+    <Version>0.3.1</Version>
     <Company>Hikidana</Company>
     <Copyright>Copyright (c) 2026 Hikidana</Copyright>
     <NeutralLanguage>ja-JP</NeutralLanguage>

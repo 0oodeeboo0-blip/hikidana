@@ -41,6 +41,7 @@ internal sealed class ChromiumPage : IDisposable
     {
         if (shared is { } page && Hikidana.Win32.TargetWindow.From(page.Window)?.Exists == true)
         {
+            page.CatchUp();
             return page;
         }
 
@@ -118,6 +119,15 @@ internal sealed class ChromiumPage : IDisposable
         var content = Desktop.FindDescendant(Window, w => Desktop.ClassOf(w) == "Chrome_RenderWidgetHostHWND");
         Assert.True(TestNative.GetWindowRect(content != 0 ? content : Window, out var rect));
         return rect;
+    }
+
+    /// <summary>いままでの貼り付けを読んだことにする（前のテストが読まなかったものを、次のテストが受け取らないように）。</summary>
+    public void CatchUp()
+    {
+        if (Read() is { } latest && latest.Number > lastNumber)
+        {
+            lastNumber = latest.Number;
+        }
     }
 
     /// <summary>次の貼り付けかドロップを待つ（前に読んだものより新しいもの）。</summary>

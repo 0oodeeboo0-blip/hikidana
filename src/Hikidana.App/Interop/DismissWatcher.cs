@@ -57,6 +57,12 @@ internal sealed unsafe partial class DismissWatcher : IDisposable
     /// <summary>いまのクリックを、押したときに数えてよかったか（画面のスレッドだけで使う）。</summary>
     private bool downCounts;
 
+    /// <summary>
+    /// いちばん最近のマウスの左ボタン（押した・離した）のときの Shift（1）と Ctrl（2）と、その時刻（Environment.TickCount64 を 2 けた左へ）。
+    /// 見張りのスレッドが、そのクリックがアプリに届く前に書くので、クリックした瞬間のキーの様子になる。
+    /// </summary>
+    private static long lastButtonKeys;
+
     [StructLayout(LayoutKind.Sequential)]
     private struct MouseHookData
     {
@@ -111,6 +117,21 @@ internal sealed unsafe partial class DismissWatcher : IDisposable
     public Func<bool> TakesEscape { get; init; } = static () => true;
 
     public bool IsWatching => running is not null;
+
+    /// <summary>
+    /// 棚が開いている間の、いちばん最近の左クリックのときに Shift と Ctrl を押していたか（<paramref name="maxAge"/> より前なら null）。
+    /// クリックを画面のスレッドが受け取るのは少しあとなので、その時点のキーの様子を見ると、もう離されていることがある。
+    /// </summary>
+    public static (bool Shift, bool Control)? ButtonKeys(TimeSpan maxAge)
+    {
+        var packed = Interlocked.Read(ref lastButtonKeys);
+        if (packed == 0 || Environment.TickCount64 - (packed >> 2) > maxAge.TotalMilliseconds)
+        {
+            return null;
+        }
+
+        return ((packed & 1) != 0, (packed & 2) != 0);
+    }
 
     /// <summary>見張りを付ける（棚を開いたとき）。</summary>
     public void Start()
@@ -296,6 +317,7 @@ internal sealed unsafe partial class DismissWatcher : IDisposable
             {
                 case WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN or WM_XBUTTONDOWN:
                 {
+                    RememberKeys(message);
                     // 画面のスレッドへの知らせは、このクリックがアプリに届くより前に並ぶ（メニューが閉じる前の様子で決められる）
                     var outside = IsOutside(point);
                     owner.dispatcher.BeginInvoke(() => owner.OnDown(this, outside));
@@ -304,11 +326,24 @@ internal sealed unsafe partial class DismissWatcher : IDisposable
 
                 case WM_LBUTTONUP or WM_RBUTTONUP or WM_MBUTTONUP or WM_XBUTTONUP:
                 {
+                    RememberKeys(message);
                     var outside = IsOutside(point);
                     owner.dispatcher.BeginInvoke(() => owner.OnUp(this, outside));
                     break;
                 }
             }
+        }
+
+        /// <summary>左ボタンのときの Shift と Ctrl を覚える（いまのキーの様子は、このクリックの瞬間のもの）。</summary>
+        private static void RememberKeys(int message)
+        {
+            if (message is not (WM_LBUTTONDOWN or WM_LBUTTONUP))
+            {
+                return;
+            }
+
+            var keys = (GetAsyncKeyState(VK_SHIFT) < 0 ? 1L : 0L) | (GetAsyncKeyState(VK_CONTROL) < 0 ? 2L : 0L);
+            Interlocked.Exchange(ref lastButtonKeys, (Environment.TickCount64 << 2) | keys);
         }
 
         /// <returns>アプリへ渡さないなら true。</returns>

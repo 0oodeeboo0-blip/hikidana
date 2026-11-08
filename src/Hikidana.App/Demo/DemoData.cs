@@ -23,15 +23,34 @@ internal static class DemoData
     /// <summary>前の見本を消す。</summary>
     public static void Reset()
     {
-        try
+        for (var attempt = 0; attempt < 5; attempt++)
         {
-            if (Directory.Exists(Root))
+            try
             {
-                Directory.Delete(Root, recursive: true);
+                if (Directory.Exists(Root))
+                {
+                    Directory.Delete(Root, recursive: true);
+                }
+
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(200);
             }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+
+        // 消せないファイルが残ったとき（ブラウザーへドラッグしたファイルを、ブラウザーが開いたままにしているなど）は、
+        // 消せるものだけ消す。棚の索引と設定は消えるので、見本は初めからになる
+        foreach (var file in Directory.EnumerateFiles(Root, "*", SearchOption.AllDirectories).ToList())
         {
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
         }
     }
 

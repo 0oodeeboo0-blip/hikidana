@@ -289,7 +289,17 @@ public sealed class AppTests
         await TestMouse.ClickAsync(item.X, item.Y, hoverMilliseconds: 300);
 
         // スクリーンショットだけが消えて、ほかは残る。知らせが出る
-        var cleared = await Desktop.WaitUntilAsync(() => DemoClips() is { Count: > 0 } now && now.All(c => c.Kind != "Screenshot"), TimeSpan.FromSeconds(3));
+        // （CI で、起動してすぐのメニューがクリックを受けないことがまれにあるので、メニューが開いたままなら、もう一度押す）
+        bool Cleared() => DemoClips() is { Count: > 0 } now && now.All(c => c.Kind != "Screenshot");
+        var cleared = await Desktop.WaitUntilAsync(Cleared, TimeSpan.FromSeconds(2));
+        if (!cleared && TestNative.IsWindowVisible(menu) && await Automation.WaitForCenterAsync(menu, "ClearScreenshotsItem", TimeSpan.FromSeconds(1)) is { } again)
+        {
+            Console.WriteLine("       メニューがクリックを受けなかったので、もう一度押します。");
+            ScreenCapture.Save("failed-app-clear-first");
+            TestMouse.MoveTo(again.X - 20, again.Y);
+            await TestMouse.ClickAsync(again.X, again.Y, hoverMilliseconds: 500);
+            cleared = await Desktop.WaitUntilAsync(Cleared, TimeSpan.FromSeconds(3));
+        }
         var after = DemoClips();
         if (!cleared)
         {

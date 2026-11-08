@@ -876,6 +876,12 @@ internal sealed partial class ShelfController : IDisposable
 
         fullscreenHidden = hide;
         Log.Info(hide ? "全画面のアプリが前にあるので、取っ手を隠しました。" : "全画面が終わったので、取っ手を出しました。");
+        if (hide && !isOpen)
+        {
+            // 出ている知らせも、全画面の上に残さない
+            toast.Hide();
+        }
+
         UpdateHandleVisibility();
         if (!hide && updateWaiting && updates?.Available is { } release && announcedUpdate != release.Tag)
         {
